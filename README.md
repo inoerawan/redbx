@@ -1,6 +1,6 @@
 # redbx
 
-[![License](https://img.shields.io/crates/l/redbx)](https://img.shields.io/crates/l/redbx)
+[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](https://crates.io/crates/redbx)
 
 A simple, portable, high-performance, ACID, embedded key-value store with built-in AES encryption.
 
