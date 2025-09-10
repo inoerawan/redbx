@@ -4,7 +4,7 @@
 
 A simple, portable, high-performance, ACID, embedded key-value store with built-in AES encryption.
 
-redbx is a fork of redb that provides transparent encryption for all user data. It's written in pure Rust
+redbx is a fork of [redb](https://github.com/cberner/redb) that provides transparent encryption for all user data. It's written in pure Rust
 and is loosely inspired by [lmdb](http://www.lmdb.tech/doc/). Data is stored in a collection of copy-on-write
 B-trees with AES-256-GCM encryption. For more details, see the [design doc](docs/redbx-design.md)
 
