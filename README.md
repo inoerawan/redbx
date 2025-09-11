@@ -20,7 +20,7 @@ B-trees with AES-256-GCM encryption. For more details, see the [design doc](docs
 - Savepoints and rollbacks
 
 ```rust
-use redbx::{Database, Error, ReadableTable, TableDefinition};
+use redbx::{Database, Error, ReadableDatabase, TableDefinition};
 
 const TABLE: TableDefinition<&str, u64> = TableDefinition::new("my_data");
 
@@ -34,11 +34,13 @@ fn main() -> Result<(), Error> {
     }
     write_txn.commit()?;
 
+    drop(db);
+
     // Open the encrypted database with the same password
     let db = Database::open("my_db.redbx", "my_secure_password")?;
     let read_txn = db.begin_read()?;
     let table = read_txn.open_table(TABLE)?;
-    assert_eq!(table.get("my_key")?.unwrap().value(), 123);
+    println!("{:?}",table.get("my_key")?.unwrap().value());
 
     Ok(())
 }
