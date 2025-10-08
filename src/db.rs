@@ -1078,16 +1078,38 @@ pub struct Builder {
 impl Builder {
     /// Read the salt from the unencrypted database header
     fn read_salt_from_header(file: &File) -> Result<[u8; 16], DatabaseError> {
-        use std::os::unix::fs::FileExt;
-
         // Read the database header (unencrypted) - header is always at the beginning
         // We need to read enough bytes to get the salt, which is at offset 32
         const SALT_OFFSET: usize = 32; // TRAILING_REGION_DATA_PAGES_OFFSET + size_of::<u32>()
         const HEADER_SIZE_FOR_SALT: usize = SALT_OFFSET + 16;
 
         let mut header_buffer = [0u8; HEADER_SIZE_FOR_SALT];
-        file.read_exact_at(&mut header_buffer, 0)
-            .map_err(|e| DatabaseError::Storage(StorageError::Io(e)))?;
+        
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::FileExt;
+            file.read_exact_at(&mut header_buffer, 0)
+                .map_err(|e| DatabaseError::Storage(StorageError::Io(e)))?;
+        }
+        
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::FileExt;
+            let mut offset = 0u64;
+            let mut data_offset = 0;
+            while data_offset < header_buffer.len() {
+                let bytes_read = file.seek_read(&mut header_buffer[data_offset..], offset)
+                    .map_err(|e| DatabaseError::Storage(StorageError::Io(e)))?;
+                offset += bytes_read as u64;
+                data_offset += bytes_read;
+            }
+        }
+        
+        #[cfg(target_os = "wasi")]
+        {
+            read_exact_at(file, &mut header_buffer, 0)
+                .map_err(|e| DatabaseError::Storage(StorageError::Io(e)))?;
+        }
 
         // Extract the salt from the header
         let salt = header_buffer[SALT_OFFSET..(SALT_OFFSET + 16)].try_into()
@@ -1303,6 +1325,42 @@ impl Builder {
 impl std::fmt::Debug for Database {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Database").finish()
+    }
+}
+
+#[cfg(target_os = "wasi")]
+fn read_exact_at(file: &File, mut buf: &mut [u8], mut offset: u64) -> io::Result<()> {
+    use std::os::fd::AsRawFd;
+
+    while !buf.is_empty() {
+        let nbytes = unsafe {
+            libc::pread(
+                file.as_raw_fd(),
+                buf.as_mut_ptr() as _,
+                std::cmp::min(buf.len(), libc::ssize_t::MAX as _),
+                offset as _,
+            )
+        };
+        match nbytes {
+            0 => break,
+            -1 => match io::Error::last_os_error() {
+                err if err.kind() == io::ErrorKind::Interrupted => {}
+                err => return Err(err),
+            },
+            n => {
+                let tmp = buf;
+                buf = &mut tmp[n as usize..];
+                offset += n as u64;
+            }
+        }
+    }
+    if !buf.is_empty() {
+        Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "failed to fill whole buffer",
+        ))
+    } else {
+        Ok(())
     }
 }
 

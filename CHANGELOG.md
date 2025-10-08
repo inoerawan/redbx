@@ -18,6 +18,20 @@ Synced with upstream redb v3.1.0 to incorporate latest improvements while mainta
 * **Performance benefits** - redbx now benefits from upstream performance optimizations while maintaining encryption
 * **Enhanced stability** - Incorporated upstream bug fixes and platform compatibility improvements
 
+### 🌍 Platform Compatibility Improvements
+
+#### Cross-Platform File Operations
+* **Windows compatibility** - Added proper `seek_read`/`seek_write` support for encrypted file backend
+* **WASI support** - Implemented `pread`/`pwrite` helpers using `libc` for WebAssembly System Interface
+* **Unix compatibility** - Maintained existing `read_exact_at`/`write_all_at` functionality
+* **Platform-specific helpers** - Added conditional compilation for optimal file I/O on each platform
+
+#### Enhanced Testing
+* **Salt integrity verification** - Complete implementation of salt integrity tests across all platforms
+* **Windows-specific tests** - New test suite validating Windows compatibility
+* **WASI test support** - Fixed legacy WASI test skipping with proper implementation
+* **Cross-platform CI readiness** - All tests now run correctly on Unix, Windows, and WASI
+
 ### 🔐 Encryption Features (Unchanged)
 * **Built-in AES-256-GCM encryption** - Transparent encryption for all user data at rest
 * **PBKDF2-SHA256 key derivation** - 100,000 iterations for secure key generation
