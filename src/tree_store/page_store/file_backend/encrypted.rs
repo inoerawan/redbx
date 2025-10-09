@@ -12,7 +12,11 @@ use std::fs::File;
 use std::io;
 use std::io::ErrorKind;
 use std::fs::TryLockError;
+#[cfg(unix)]
 use std::os::unix::fs::FileExt;
+
+#[cfg(windows)]
+use std::os::windows::fs::FileExt;
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -61,6 +65,54 @@ pub struct EncryptedFileBackend {
 }
 
 impl EncryptedFileBackend {
+    fn read_exact_at(&self, buf: &mut [u8], offset: u64) -> Result<(), io::Error> {
+        #[cfg(unix)]
+        {
+            self.file.read_exact_at(buf, offset)
+        }
+        
+        #[cfg(windows)]
+        {
+            let mut read_offset = offset;
+            let mut data_offset = 0;
+            while data_offset < buf.len() {
+                let bytes_read = self.file.seek_read(&mut buf[data_offset..], read_offset)?;
+                read_offset += bytes_read as u64;
+                data_offset += bytes_read;
+            }
+            Ok(())
+        }
+        
+        #[cfg(target_os = "wasi")]
+        {
+            read_exact_at(&self.file, buf, offset)
+        }
+    }
+    
+    fn write_all_at(&self, buf: &[u8], offset: u64) -> Result<(), io::Error> {
+        #[cfg(unix)]
+        {
+            self.file.write_all_at(buf, offset)
+        }
+        
+        #[cfg(windows)]
+        {
+            let mut write_offset = offset;
+            let mut data_offset = 0;
+            while data_offset < buf.len() {
+                let bytes_written = self.file.seek_write(&buf[data_offset..], write_offset)?;
+                write_offset += bytes_written as u64;
+                data_offset += bytes_written;
+            }
+            Ok(())
+        }
+        
+        #[cfg(target_os = "wasi")]
+        {
+            write_all_at(&self.file, buf, offset)
+        }
+    }
+
     pub fn new(file: File, password: &str) -> Result<Self, DatabaseError> {
         match file.try_lock() {
             Ok(()) => {
@@ -165,7 +217,7 @@ impl EncryptedFileBackend {
 
 
     fn read_and_decrypt_with_errors(&self, offset: u64, out: &mut [u8]) -> Result<(), EncryptedBackendError> {
-        self.file.read_exact_at(out, offset)?;
+        self.read_exact_at(out, offset)?;
 
         if self.should_encrypt_page(out) {
             let page_type = out[0];
@@ -231,7 +283,7 @@ impl EncryptedFileBackend {
     fn encrypt_and_write(&self, offset: u64, data: &[u8]) -> Result<(), io::Error> {
         if !self.should_encrypt_page(data) {
             // Write unencrypted (BRANCH pages, metadata)
-            self.file.write_all_at(data, offset)?;
+            self.write_all_at(data, offset)?;
             self.file.sync_all()?;
             return Ok(());
         }
@@ -265,8 +317,7 @@ impl EncryptedFileBackend {
 
         // Write the encrypted data (should fit since we limited plaintext size)
         page_buffer[1+AES_NONCE_SIZE..1+AES_NONCE_SIZE+encrypted_data.len()].copy_from_slice(&encrypted_data);
-
-        self.file.write_all_at(&page_buffer, offset)?;
+        self.write_all_at(&page_buffer, offset)?;
         self.file.sync_all()?;
         Ok(())
     }
@@ -277,7 +328,7 @@ impl EncryptedFileBackend {
         if out.len() < PAGE_SIZE {
             // Read into a full page buffer first, then determine if it's encrypted
             let mut full_page = [0u8; PAGE_SIZE];
-            self.file.read_exact_at(&mut full_page, offset)?;
+            self.read_exact_at(&mut full_page, offset)?;
 
             if self.should_encrypt_page(&full_page) {
                 // LEAF page decryption with preserved page type
@@ -301,7 +352,7 @@ impl EncryptedFileBackend {
                 out[..copy_len].copy_from_slice(&full_page[..copy_len]);
             }
         } else if out.len() == PAGE_SIZE {
-            self.file.read_exact_at(out, offset)?;
+            self.read_exact_at(out, offset)?;
 
             if self.should_encrypt_page(out) {
                 let page_type = out[0];
@@ -322,7 +373,7 @@ impl EncryptedFileBackend {
                 }
             }
         } else {
-            self.file.read_exact_at(out, offset)?;
+            self.read_exact_at(out, offset)?;
 
             // For large reads, we need to decrypt each page individually
             let mut current_offset = 0u64;
@@ -388,6 +439,75 @@ impl StorageBackend for EncryptedFileBackend {
         }
         Ok(())
     }
+}
+
+#[cfg(target_os = "wasi")]
+fn read_exact_at(file: &File, mut buf: &mut [u8], mut offset: u64) -> io::Result<()> {
+    use std::os::fd::AsRawFd;
+
+    while !buf.is_empty() {
+        let nbytes = unsafe {
+            libc::pread(
+                file.as_raw_fd(),
+                buf.as_mut_ptr() as _,
+                std::cmp::min(buf.len(), libc::ssize_t::MAX as _),
+                offset as _,
+            )
+        };
+        match nbytes {
+            0 => break,
+            -1 => match io::Error::last_os_error() {
+                err if err.kind() == io::ErrorKind::Interrupted => {}
+                err => return Err(err),
+            },
+            n => {
+                let tmp = buf;
+                buf = &mut tmp[n as usize..];
+                offset += n as u64;
+            }
+        }
+    }
+    if !buf.is_empty() {
+        Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "failed to fill whole buffer",
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "wasi")]
+fn write_all_at(file: &File, mut buf: &[u8], mut offset: u64) -> io::Result<()> {
+    use std::os::fd::AsRawFd;
+
+    while !buf.is_empty() {
+        let nbytes = unsafe {
+            libc::pwrite(
+                file.as_raw_fd(),
+                buf.as_ptr() as _,
+                std::cmp::min(buf.len(), libc::ssize_t::MAX as _),
+                offset as _,
+            )
+        };
+        match nbytes {
+            0 => {
+                return Err(io::Error::new(
+                    io::ErrorKind::WriteZero,
+                    "failed to write whole buffer",
+                ));
+            }
+            -1 => match io::Error::last_os_error() {
+                err if err.kind() == io::ErrorKind::Interrupted => {}
+                err => return Err(err),
+            },
+            n => {
+                buf = &buf[n as usize..];
+                offset += n as u64
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

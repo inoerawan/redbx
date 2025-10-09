@@ -437,6 +437,8 @@ impl Display for SetDurabilityError {
     }
 }
 
+impl std::error::Error for SetDurabilityError {}
+
 /// Errors related to transactions
 #[derive(Debug)]
 #[non_exhaustive]

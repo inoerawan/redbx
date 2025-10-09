@@ -11,6 +11,10 @@ use redbx::{DatabaseError, ReadableMultimapTable, SavepointError, StorageError, 
 use std::borrow::Borrow;
 use std::fs;
 use std::io::{ErrorKind, Write};
+#[cfg(target_os = "wasi")]
+use std::fs::File;
+#[cfg(target_os = "wasi")]
+use std::io;
 use std::marker::PhantomData;
 use std::ops::RangeBounds;
 use std::sync::Arc;
@@ -28,6 +32,42 @@ fn create_tempfile() -> tempfile::NamedTempFile {
         tempfile::NamedTempFile::new_in("/tmp").unwrap()
     } else {
         tempfile::NamedTempFile::new().unwrap()
+    }
+}
+
+#[cfg(target_os = "wasi")]
+fn read_exact_at(file: &File, mut buf: &mut [u8], mut offset: u64) -> io::Result<()> {
+    use std::os::fd::AsRawFd;
+
+    while !buf.is_empty() {
+        let nbytes = unsafe {
+            libc::pread(
+                file.as_raw_fd(),
+                buf.as_mut_ptr() as _,
+                std::cmp::min(buf.len(), libc::ssize_t::MAX as _),
+                offset as _,
+            )
+        };
+        match nbytes {
+            0 => break,
+            -1 => match io::Error::last_os_error() {
+                err if err.kind() == io::ErrorKind::Interrupted => {}
+                err => return Err(err),
+            },
+            n => {
+                let tmp = buf;
+                buf = &mut tmp[n as usize..];
+                offset += n as u64;
+            }
+        }
+    }
+    if !buf.is_empty() {
+        Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "failed to fill whole buffer",
+        ))
+    } else {
+        Ok(())
     }
 }
 
@@ -1899,18 +1939,48 @@ fn compaction() {
 
 #[test]
 fn test_compaction_debug() {
-    use std::os::unix::fs::FileExt;
-    
     let tmpfile = create_tempfile();
     
     // Create database and check salt after creation
     let db = Database::create(tmpfile.path(), "password").unwrap();
-    let file = std::fs::File::open(tmpfile.path()).unwrap();
-    const SALT_OFFSET: usize = 32; // Must match header.rs SALT_OFFSET
-    let mut salt_before = [0u8; 16];
-    file.read_exact_at(&mut salt_before, SALT_OFFSET as u64).unwrap();
-    drop(file);
+    drop(db); // Close the database before reading the file to avoid Windows locking issues
     
+    // Read salt before operations to verify it remains unchanged
+    let salt_before = {
+        let file = std::fs::File::open(tmpfile.path()).unwrap();
+        const SALT_OFFSET: usize = 32; // Must match header.rs SALT_OFFSET
+        let mut salt = [0u8; 16];
+        
+        // Platform-specific file reading
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::FileExt;
+            file.read_exact_at(&mut salt, SALT_OFFSET as u64).unwrap();
+        }
+        
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::FileExt;
+            let mut offset = SALT_OFFSET as u64;
+            let mut data_offset = 0;
+            while data_offset < salt.len() {
+                let bytes_read = file.seek_read(&mut salt[data_offset..], offset).unwrap();
+                offset += bytes_read as u64;
+                data_offset += bytes_read;
+            }
+        }
+        
+        #[cfg(target_os = "wasi")]
+        {
+            // Use WASI helper function for file reading
+            read_exact_at(&file, &mut salt, SALT_OFFSET as u64).unwrap();
+        }
+        drop(file);
+        salt
+    };
+    
+    // Reopen database for operations
+    let db = Database::open(tmpfile.path(), "password").unwrap();
     let definition: TableDefinition<u32, &[u8]> = TableDefinition::new("x");
     let big_value = vec![0u8; 100 * 1024];
 
@@ -1923,16 +1993,7 @@ fn test_compaction_debug() {
         }
     }
     txn.commit().unwrap();
-
-    // Check salt after operations
-    let file = std::fs::File::open(tmpfile.path()).unwrap();
-    let mut salt_after = [0u8; 16];
-    file.read_exact_at(&mut salt_after, SALT_OFFSET as u64).unwrap();
-    drop(file);
     
-    // The salt should not change
-    assert_eq!(salt_before, salt_after, "Salt should not change after operations");
-
     // Delete some data
     let txn = db.begin_write().unwrap();
     {
@@ -1955,6 +2016,50 @@ fn test_compaction_debug() {
             panic!("Database reopen failed: {:?}", e);
         }
     }
+    
+    // Read salt after operations to verify it hasn't changed
+    let salt_after = {
+        let file = std::fs::File::open(tmpfile.path()).unwrap();
+        const SALT_OFFSET: usize = 32; // Must match header.rs SALT_OFFSET
+        let mut salt = [0u8; 16];
+        
+        // Platform-specific file reading
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::FileExt;
+            file.read_exact_at(&mut salt, SALT_OFFSET as u64).unwrap();
+        }
+        
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::FileExt;
+            let mut offset = SALT_OFFSET as u64;
+            let mut data_offset = 0;
+            while data_offset < salt.len() {
+                let bytes_read = file.seek_read(&mut salt[data_offset..], offset).unwrap();
+                offset += bytes_read as u64;
+                data_offset += bytes_read;
+            }
+        }
+        
+        #[cfg(target_os = "wasi")]
+        {
+            // Use WASI helper function for file reading
+            read_exact_at(&file, &mut salt, SALT_OFFSET as u64).unwrap();
+        }
+        drop(file);
+        salt
+    };
+    
+    // Verify salt integrity - it should remain unchanged after all operations
+    assert_eq!(
+        salt_before, salt_after,
+        "Salt should remain unchanged during database operations (insert/delete/reopen). \
+         Before: {:?}, After: {:?}",
+        salt_before, salt_after
+    );
+    
+    // Test completed successfully - database can be reopened and salt integrity is maintained
 }
 
 fn require_send<T: Send>(_: &T) {}
