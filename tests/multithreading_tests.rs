@@ -1,6 +1,8 @@
 #[cfg(not(target_os = "wasi"))]
 mod multithreading_test {
-    use redbx::{Database, ReadableDatabase, ReadableTable, ReadableTableMetadata, TableDefinition};
+    use redbx::{
+        Database, ReadableDatabase, ReadableTable, ReadableTableMetadata, TableDefinition,
+    };
     use std::sync::Arc;
     use std::thread;
 

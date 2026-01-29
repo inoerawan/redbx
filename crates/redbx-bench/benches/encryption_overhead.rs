@@ -1,18 +1,18 @@
 //! Encryption Overhead Benchmark
-//! 
+//!
 //! Compares redbx (encrypted) vs redb (unencrypted) performance
 //! to measure the overhead of encryption.
 
-use std::time::Instant;
-use tempfile::NamedTempFile;
-use comfy_table::{Table, Cell, presets::UTF8_FULL};
-use redbx_bench::*;
+use comfy_table::{Cell, Table, presets::UTF8_FULL};
 use redb::ReadableDatabase as RedbReadableDatabase;
 use redbx::ReadableDatabase;
+use redbx_bench::*;
+use std::time::Instant;
+use tempfile::NamedTempFile;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = env_logger::try_init();
-    
+
     println!("🔐 Encryption Overhead Benchmark");
     println!("Comparing redbx (encrypted) vs redb (unencrypted)");
     println!("================================================\n");
@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("📊 Benchmarking redb (unencrypted)...");
     let redb_results = benchmark_redb()?;
 
-    // Benchmark redbx (encrypted)  
+    // Benchmark redbx (encrypted)
     println!("\n📊 Benchmarking redbx (encrypted)...");
     let redbx_results = benchmark_redbx()?;
 
@@ -34,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn benchmark_redb() -> Result<Vec<BenchmarkResult>, Box<dyn std::error::Error>> {
     let mut results = Vec::new();
     let mut rng = make_rng();
-    
+
     let tmpfile = NamedTempFile::new()?;
     let db = redb::Database::create(tmpfile.path())?;
     let table_def: redb::TableDefinition<&[u8], &[u8]> = redb::TableDefinition::new(TABLE_NAME);
@@ -53,7 +53,11 @@ fn benchmark_redb() -> Result<Vec<BenchmarkResult>, Box<dyn std::error::Error>> 
         write_txn.commit()?;
     }
     let duration = start.elapsed();
-    println!("  Bulk load: {} items in {}", BULK_ELEMENTS, format_duration(duration));
+    println!(
+        "  Bulk load: {} items in {}",
+        BULK_ELEMENTS,
+        format_duration(duration)
+    );
     results.push(BenchmarkResult {
         name: "Bulk Load".to_string(),
         duration,
@@ -71,7 +75,11 @@ fn benchmark_redb() -> Result<Vec<BenchmarkResult>, Box<dyn std::error::Error>> 
         write_txn.commit()?;
     }
     let duration = start.elapsed();
-    println!("  Individual writes: {} items in {}", INDIVIDUAL_WRITES, format_duration(duration));
+    println!(
+        "  Individual writes: {} items in {}",
+        INDIVIDUAL_WRITES,
+        format_duration(duration)
+    );
     results.push(BenchmarkResult {
         name: "Individual Writes".to_string(),
         duration,
@@ -91,7 +99,12 @@ fn benchmark_redb() -> Result<Vec<BenchmarkResult>, Box<dyn std::error::Error>> 
         write_txn.commit()?;
     }
     let duration = start.elapsed();
-    println!("  Batch writes: {} batches of {} items in {}", BATCH_WRITES, BATCH_SIZE, format_duration(duration));
+    println!(
+        "  Batch writes: {} batches of {} items in {}",
+        BATCH_WRITES,
+        BATCH_SIZE,
+        format_duration(duration)
+    );
     results.push(BenchmarkResult {
         name: "Batch Writes".to_string(),
         duration,
@@ -112,7 +125,12 @@ fn benchmark_redb() -> Result<Vec<BenchmarkResult>, Box<dyn std::error::Error>> 
         }
     }
     let duration = start.elapsed();
-    println!("  Random reads: {}/{} found in {}", found, NUM_READS, format_duration(duration));
+    println!(
+        "  Random reads: {}/{} found in {}",
+        found,
+        NUM_READS,
+        format_duration(duration)
+    );
     results.push(BenchmarkResult {
         name: "Random Reads".to_string(),
         duration,
@@ -138,7 +156,11 @@ fn benchmark_redb() -> Result<Vec<BenchmarkResult>, Box<dyn std::error::Error>> 
         }
     }
     let duration = start.elapsed();
-    println!("  Range scans: {} total items scanned in {}", total_scanned, format_duration(duration));
+    println!(
+        "  Range scans: {} total items scanned in {}",
+        total_scanned,
+        format_duration(duration)
+    );
     results.push(BenchmarkResult {
         name: "Range Scans".to_string(),
         duration,
@@ -150,7 +172,7 @@ fn benchmark_redb() -> Result<Vec<BenchmarkResult>, Box<dyn std::error::Error>> 
 fn benchmark_redbx() -> Result<Vec<BenchmarkResult>, Box<dyn std::error::Error>> {
     let mut results = Vec::new();
     let mut rng = make_rng();
-    
+
     let tmpfile = NamedTempFile::new()?;
     let db = redbx::Database::create(tmpfile.path(), "benchmark_password")?;
     let table_def: redbx::TableDefinition<&[u8], &[u8]> = redbx::TableDefinition::new(TABLE_NAME);
@@ -169,7 +191,11 @@ fn benchmark_redbx() -> Result<Vec<BenchmarkResult>, Box<dyn std::error::Error>>
         write_txn.commit()?;
     }
     let duration = start.elapsed();
-    println!("  Bulk load: {} items in {}", BULK_ELEMENTS, format_duration(duration));
+    println!(
+        "  Bulk load: {} items in {}",
+        BULK_ELEMENTS,
+        format_duration(duration)
+    );
     results.push(BenchmarkResult {
         name: "Bulk Load".to_string(),
         duration,
@@ -187,7 +213,11 @@ fn benchmark_redbx() -> Result<Vec<BenchmarkResult>, Box<dyn std::error::Error>>
         write_txn.commit()?;
     }
     let duration = start.elapsed();
-    println!("  Individual writes: {} items in {}", INDIVIDUAL_WRITES, format_duration(duration));
+    println!(
+        "  Individual writes: {} items in {}",
+        INDIVIDUAL_WRITES,
+        format_duration(duration)
+    );
     results.push(BenchmarkResult {
         name: "Individual Writes".to_string(),
         duration,
@@ -207,7 +237,12 @@ fn benchmark_redbx() -> Result<Vec<BenchmarkResult>, Box<dyn std::error::Error>>
         write_txn.commit()?;
     }
     let duration = start.elapsed();
-    println!("  Batch writes: {} batches of {} items in {}", BATCH_WRITES, BATCH_SIZE, format_duration(duration));
+    println!(
+        "  Batch writes: {} batches of {} items in {}",
+        BATCH_WRITES,
+        BATCH_SIZE,
+        format_duration(duration)
+    );
     results.push(BenchmarkResult {
         name: "Batch Writes".to_string(),
         duration,
@@ -228,7 +263,12 @@ fn benchmark_redbx() -> Result<Vec<BenchmarkResult>, Box<dyn std::error::Error>>
         }
     }
     let duration = start.elapsed();
-    println!("  Random reads: {}/{} found in {}", found, NUM_READS, format_duration(duration));
+    println!(
+        "  Random reads: {}/{} found in {}",
+        found,
+        NUM_READS,
+        format_duration(duration)
+    );
     results.push(BenchmarkResult {
         name: "Random Reads".to_string(),
         duration,
@@ -254,7 +294,11 @@ fn benchmark_redbx() -> Result<Vec<BenchmarkResult>, Box<dyn std::error::Error>>
         }
     }
     let duration = start.elapsed();
-    println!("  Range scans: {} total items scanned in {}", total_scanned, format_duration(duration));
+    println!(
+        "  Range scans: {} total items scanned in {}",
+        total_scanned,
+        format_duration(duration)
+    );
     results.push(BenchmarkResult {
         name: "Range Scans".to_string(),
         duration,
@@ -266,21 +310,21 @@ fn benchmark_redbx() -> Result<Vec<BenchmarkResult>, Box<dyn std::error::Error>>
 fn compare_results(redb_results: Vec<BenchmarkResult>, redbx_results: Vec<BenchmarkResult>) {
     let mut table = Table::new();
     table.load_preset(UTF8_FULL);
-    
+
     table.set_header(vec![
-        "Test", 
-        "redb (unencrypted)", 
-        "redbx (encrypted)", 
-        "Overhead", 
-        "Status"
+        "Test",
+        "redb (unencrypted)",
+        "redbx (encrypted)",
+        "Overhead",
+        "Status",
     ]);
-    
+
     let mut total_overhead = 0.0;
     let mut count = 0;
 
     for (redb_result, redbx_result) in redb_results.iter().zip(redbx_results.iter()) {
         let overhead = calculate_overhead(redb_result.duration, redbx_result.duration);
-        
+
         let status = if overhead <= 20.0 {
             "✅ GOOD"
         } else if overhead <= 40.0 {
@@ -309,7 +353,7 @@ fn compare_results(redb_results: Vec<BenchmarkResult>, redbx_results: Vec<Benchm
         let avg_overhead = total_overhead / count as f64;
         println!("\n📊 Summary:");
         println!("Average encryption overhead: {:.1}%", avg_overhead);
-        
+
         if avg_overhead <= 20.0 {
             println!("✅ Performance is within acceptable limits (≤20% overhead)");
         } else if avg_overhead <= 40.0 {

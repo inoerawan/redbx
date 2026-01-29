@@ -111,7 +111,11 @@ pub(super) struct DatabaseHeader {
 }
 
 impl DatabaseHeader {
-    pub(super) fn new(layout: DatabaseLayout, transaction_id: TransactionId, salt: Option<[u8; 16]>) -> Self {
+    pub(super) fn new(
+        layout: DatabaseLayout,
+        transaction_id: TransactionId,
+        salt: Option<[u8; 16]>,
+    ) -> Self {
         #[allow(clippy::assertions_on_constants)]
         {
             assert!(TRANSACTION_LAST_FIELD <= SLOT_CHECKSUM_OFFSET);
@@ -138,7 +142,6 @@ impl DatabaseHeader {
     pub(super) fn page_size(&self) -> u32 {
         self.page_size
     }
-
 
     pub(super) fn layout(&self) -> DatabaseLayout {
         let full_layout = RegionLayout::new(

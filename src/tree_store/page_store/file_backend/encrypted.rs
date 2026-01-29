@@ -3,16 +3,16 @@
 //! Provides transparent encryption for LEAF pages while keeping BRANCH pages
 //! and metadata unencrypted for performance and debugging.
 
-use crate::encryption::{PageCipher, KeyManager, should_encrypt_page, AES_NONCE_SIZE};
+use crate::encryption::{AES_NONCE_SIZE, KeyManager, PageCipher, should_encrypt_page};
 use crate::tree_store::page_store::header::PAGE_SIZE;
 use crate::tree_store::{BRANCH, LEAF};
 use crate::{DatabaseError, Result, StorageBackend, StorageError};
 #[cfg(feature = "logging")]
 use log::warn;
 use std::fs::File;
+use std::fs::TryLockError;
 use std::io;
 use std::io::ErrorKind;
-use std::fs::TryLockError;
 #[cfg(unix)]
 use std::os::unix::fs::FileExt;
 
@@ -71,7 +71,7 @@ impl EncryptedFileBackend {
         {
             self.file.read_exact_at(buf, offset)
         }
-        
+
         #[cfg(windows)]
         {
             let mut read_offset = offset;
@@ -83,19 +83,19 @@ impl EncryptedFileBackend {
             }
             Ok(())
         }
-        
+
         #[cfg(target_os = "wasi")]
         {
             read_exact_at(&self.file, buf, offset)
         }
     }
-    
+
     fn write_all_at(&self, buf: &[u8], offset: u64) -> Result<(), io::Error> {
         #[cfg(unix)]
         {
             self.file.write_all_at(buf, offset)
         }
-        
+
         #[cfg(windows)]
         {
             let mut write_offset = offset;
@@ -107,7 +107,7 @@ impl EncryptedFileBackend {
             }
             Ok(())
         }
-        
+
         #[cfg(target_os = "wasi")]
         {
             write_all_at(&self.file, buf, offset)
@@ -153,7 +153,9 @@ impl EncryptedFileBackend {
 
                 Ok(backend)
             }
-            Err(TryLockError::WouldBlock | TryLockError::Error(_)) => Err(DatabaseError::DatabaseAlreadyOpen),
+            Err(TryLockError::WouldBlock | TryLockError::Error(_)) => {
+                Err(DatabaseError::DatabaseAlreadyOpen)
+            }
         }
     }
 
@@ -166,7 +168,12 @@ impl EncryptedFileBackend {
     }
 
     /// Open an existing encrypted file backend with read-only flag
-    pub(crate) fn open_internal(file: File, password: &str, salt: [u8; 16], read_only: bool) -> Result<Self, DatabaseError> {
+    pub(crate) fn open_internal(
+        file: File,
+        password: &str,
+        salt: [u8; 16],
+        read_only: bool,
+    ) -> Result<Self, DatabaseError> {
         let lock_result = if read_only {
             file.try_lock_shared()
         } else {
@@ -204,7 +211,9 @@ impl EncryptedFileBackend {
                     lock_supported: false,
                 }
             }
-            Err(TryLockError::WouldBlock | TryLockError::Error(_)) => return Err(DatabaseError::DatabaseAlreadyOpen),
+            Err(TryLockError::WouldBlock | TryLockError::Error(_)) => {
+                return Err(DatabaseError::DatabaseAlreadyOpen);
+            }
         };
 
         Ok(backend)
@@ -214,29 +223,39 @@ impl EncryptedFileBackend {
         &self.salt
     }
 
-
-    fn read_and_decrypt_with_errors(&self, offset: u64, out: &mut [u8]) -> Result<(), EncryptedBackendError> {
+    fn read_and_decrypt_with_errors(
+        &self,
+        offset: u64,
+        out: &mut [u8],
+    ) -> Result<(), EncryptedBackendError> {
         self.read_exact_at(out, offset)?;
 
         if should_encrypt_page(out) {
             let page_type = out[0];
             let nonce = &out[1..=AES_NONCE_SIZE];
-            let encrypted_data = &out[1+AES_NONCE_SIZE..];
+            let encrypted_data = &out[1 + AES_NONCE_SIZE..];
 
             let decrypted = self.cipher.decrypt_with_nonce(
-                nonce.try_into().map_err(|_| EncryptedBackendError::Io(io::Error::new(io::ErrorKind::InvalidData, "Invalid nonce size")))?,
-                encrypted_data
+                nonce.try_into().map_err(|_| {
+                    EncryptedBackendError::Io(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "Invalid nonce size",
+                    ))
+                })?,
+                encrypted_data,
             )?;
 
             out[0] = page_type;
             out[1..=decrypted.len()].copy_from_slice(&decrypted);
             if decrypted.len() + 1 < out.len() {
-                out[1+decrypted.len()..].fill(0);
+                out[1 + decrypted.len()..].fill(0);
             }
 
             if page_type != LEAF && page_type != BRANCH {
                 return Err(EncryptedBackendError::DecryptionFailed(
-                    DatabaseError::CorruptedEncryption("Invalid page type after decryption".to_string())
+                    DatabaseError::CorruptedEncryption(
+                        "Invalid page type after decryption".to_string(),
+                    ),
                 ));
             }
         }
@@ -246,7 +265,9 @@ impl EncryptedFileBackend {
 
     pub fn validate_password(&self) -> Result<(), DatabaseError> {
         // Check if database has any data beyond the header
-        let file_len = self.file.metadata()
+        let file_len = self
+            .file
+            .metadata()
             .map_err(|e| DatabaseError::Storage(StorageError::Io(e)))?
             .len();
 
@@ -259,16 +280,16 @@ impl EncryptedFileBackend {
         let mut test_buffer = [0u8; PAGE_SIZE];
         match self.read_and_decrypt_with_errors(PAGE_SIZE as u64, &mut test_buffer) {
             Ok(()) => Ok(()),
-            Err(EncryptedBackendError::DecryptionFailed(_) | EncryptedBackendError::EncryptionFailed(_)) => {
-                Err(DatabaseError::IncorrectPassword)
-            }
+            Err(
+                EncryptedBackendError::DecryptionFailed(_)
+                | EncryptedBackendError::EncryptionFailed(_),
+            ) => Err(DatabaseError::IncorrectPassword),
             Err(EncryptedBackendError::Io(_)) => {
                 // For I/O errors, don't assume it's a password issue
                 Ok(())
             }
         }
     }
-
 
     /// Encrypt and write a page with unencrypted page type header
     fn encrypt_and_write(&self, offset: u64, data: &[u8]) -> Result<(), io::Error> {
@@ -294,12 +315,13 @@ impl EncryptedFileBackend {
             full_plaintext
         };
 
-        let nonce = crate::encryption::generate_nonce()
-            .map_err(|e| io::Error::other(format!("{e:?}")))?;
+        let nonce =
+            crate::encryption::generate_nonce().map_err(|e| io::Error::other(format!("{e:?}")))?;
 
-        let encrypted_data = self.cipher.encrypt_with_nonce(&nonce, plaintext)
+        let encrypted_data = self
+            .cipher
+            .encrypt_with_nonce(&nonce, plaintext)
             .map_err(|e| io::Error::other(format!("{e:?}")))?;
-
 
         // Write: [page_type(1)] + [nonce(12)] + [encrypted_data + auth_tag]
         let mut page_buffer = [0u8; PAGE_SIZE];
@@ -307,7 +329,8 @@ impl EncryptedFileBackend {
         page_buffer[1..=AES_NONCE_SIZE].copy_from_slice(&nonce); // Unencrypted nonce
 
         // Write the encrypted data (should fit since we limited plaintext size)
-        page_buffer[1 + AES_NONCE_SIZE..1 + AES_NONCE_SIZE + encrypted_data.len()].copy_from_slice(&encrypted_data);
+        page_buffer[1 + AES_NONCE_SIZE..1 + AES_NONCE_SIZE + encrypted_data.len()]
+            .copy_from_slice(&encrypted_data);
         self.write_all_at(&page_buffer, offset)?;
         self.file.sync_all()?;
         Ok(())
@@ -328,10 +351,15 @@ impl EncryptedFileBackend {
                     let nonce = &full_page[1..=AES_NONCE_SIZE]; // Nonce is unencrypted
                     let encrypted_data = &full_page[1 + AES_NONCE_SIZE..]; // Encrypted payload
 
-                    let decrypted = self.cipher.decrypt_with_nonce(
-                        nonce.try_into().map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid nonce size"))?,
-                        encrypted_data
-                    ).map_err(|e| io::Error::other(format!("DecryptionFailed({e:?})")))?;
+                    let decrypted = self
+                        .cipher
+                        .decrypt_with_nonce(
+                            nonce.try_into().map_err(|_| {
+                                io::Error::new(io::ErrorKind::InvalidData, "Invalid nonce size")
+                            })?,
+                            encrypted_data,
+                        )
+                        .map_err(|e| io::Error::other(format!("DecryptionFailed({e:?})")))?;
 
                     let mut decrypted_page = [0u8; PAGE_SIZE];
                     decrypted_page[0] = page_type; // Keep page type at byte 0
@@ -352,10 +380,15 @@ impl EncryptedFileBackend {
                     let nonce = &out[1..=AES_NONCE_SIZE]; // Nonce is unencrypted
                     let encrypted_data = &out[1 + AES_NONCE_SIZE..]; // Encrypted payload
 
-                    let decrypted = self.cipher.decrypt_with_nonce(
-                        nonce.try_into().map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid nonce size"))?,
-                        encrypted_data
-                    ).map_err(|e| io::Error::other(format!("DecryptionFailed({e:?})")))?;
+                    let decrypted = self
+                        .cipher
+                        .decrypt_with_nonce(
+                            nonce.try_into().map_err(|_| {
+                                io::Error::new(io::ErrorKind::InvalidData, "Invalid nonce size")
+                            })?,
+                            encrypted_data,
+                        )
+                        .map_err(|e| io::Error::other(format!("DecryptionFailed({e:?})")))?;
 
                     // Reconstruct page: [page_type] + [decrypted_data]
                     out[0] = page_type; // Keep page type at byte 0
@@ -373,7 +406,7 @@ impl EncryptedFileBackend {
                 let mut current_offset = 0u64;
                 while current_offset < out.len() as u64 {
                     let remaining = out.len() as u64 - current_offset;
-                    
+
                     // Safety: remaining is strictly < out.len() (usize), so try_from will succeed
                     let remaining_usize = usize::try_from(remaining).unwrap_or(usize::MAX);
                     let page_size = PAGE_SIZE.min(remaining_usize);
@@ -388,10 +421,15 @@ impl EncryptedFileBackend {
                         let nonce = &page_data[1..=AES_NONCE_SIZE];
                         let encrypted_data = &page_data[1 + AES_NONCE_SIZE..];
 
-                        let decrypted = self.cipher.decrypt_with_nonce(
-                            nonce.try_into().map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid nonce size"))?,
-                            encrypted_data
-                        ).map_err(|e| io::Error::other(format!("DecryptionFailed({e:?})")))?;
+                        let decrypted = self
+                            .cipher
+                            .decrypt_with_nonce(
+                                nonce.try_into().map_err(|_| {
+                                    io::Error::new(io::ErrorKind::InvalidData, "Invalid nonce size")
+                                })?,
+                                encrypted_data,
+                            )
+                            .map_err(|e| io::Error::other(format!("DecryptionFailed({e:?})")))?;
 
                         // Reconstruct page: [page_type] + [decrypted_data]
                         page_data[0] = page_type;
@@ -511,8 +549,8 @@ fn write_all_at(file: &File, mut buf: &[u8], mut offset: u64) -> io::Result<()> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::NamedTempFile;
     use crate::encryption::{KeyManager, PageCipher};
+    use tempfile::NamedTempFile;
 
     #[test]
     fn test_encrypted_backend_creation() {

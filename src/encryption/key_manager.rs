@@ -1,7 +1,7 @@
 //! Key management for redbx encryption
 
+use super::{AES_KEY_SIZE, SALT_SIZE, SecurePassword};
 use crate::DatabaseError;
-use super::{SecurePassword, SALT_SIZE, AES_KEY_SIZE};
 use std::time::Instant;
 use zeroize::Zeroize;
 

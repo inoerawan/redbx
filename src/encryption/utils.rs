@@ -1,20 +1,22 @@
 //! Utility functions for encryption operations
 
+use super::{AES_KEY_SIZE, PBKDF2_ITERATIONS, SALT_SIZE};
 use crate::DatabaseError;
-use super::{SALT_SIZE, AES_KEY_SIZE, PBKDF2_ITERATIONS};
 use getrandom::getrandom;
-use pbkdf2::pbkdf2;
 use hmac::Hmac;
+use pbkdf2::pbkdf2;
 use sha2::Sha256;
 
 pub fn generate_salt() -> Result<[u8; SALT_SIZE], DatabaseError> {
     let mut salt = [0u8; SALT_SIZE];
-    getrandom(&mut salt)
-        .map_err(|_e| DatabaseError::SaltGenerationFailed)?;
+    getrandom(&mut salt).map_err(|_e| DatabaseError::SaltGenerationFailed)?;
     Ok(salt)
 }
 
-pub fn derive_key(password: &[u8], salt: &[u8; SALT_SIZE]) -> Result<[u8; AES_KEY_SIZE], DatabaseError> {
+pub fn derive_key(
+    password: &[u8],
+    salt: &[u8; SALT_SIZE],
+) -> Result<[u8; AES_KEY_SIZE], DatabaseError> {
     let mut key = [0u8; AES_KEY_SIZE];
 
     pbkdf2::<Hmac<Sha256>>(password, salt, PBKDF2_ITERATIONS, &mut key)

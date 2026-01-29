@@ -10,11 +10,11 @@ use redbx::{
 use redbx::{DatabaseError, ReadableMultimapTable, SavepointError, StorageError, TableError};
 use std::borrow::Borrow;
 use std::fs;
-use std::io::{ErrorKind, Write};
 #[cfg(target_os = "wasi")]
 use std::fs::File;
 #[cfg(target_os = "wasi")]
 use std::io;
+use std::io::{ErrorKind, Write};
 use std::marker::PhantomData;
 use std::ops::RangeBounds;
 use std::sync::Arc;
@@ -991,7 +991,9 @@ fn regression14() {
 fn regression17() {
     let tmpfile = create_tempfile();
 
-    let db = Database::builder().create(tmpfile.path(), "password").unwrap();
+    let db = Database::builder()
+        .create(tmpfile.path(), "password")
+        .unwrap();
 
     let table_def: TableDefinition<u64, &[u8]> = TableDefinition::new("x");
 
@@ -1012,7 +1014,9 @@ fn regression17() {
 fn regression18() {
     let tmpfile = create_tempfile();
 
-    let db = Database::builder().create(tmpfile.path(), "password").unwrap();
+    let db = Database::builder()
+        .create(tmpfile.path(), "password")
+        .unwrap();
 
     let table_def: TableDefinition<u64, &[u8]> = TableDefinition::new("x");
 
@@ -1078,7 +1082,9 @@ fn regression18() {
 fn regression19() {
     let tmpfile = create_tempfile();
 
-    let db = Database::builder().create(tmpfile.path(), "password").unwrap();
+    let db = Database::builder()
+        .create(tmpfile.path(), "password")
+        .unwrap();
 
     let table_def: TableDefinition<u64, &[u8]> = TableDefinition::new("x");
 
@@ -1124,9 +1130,13 @@ fn regression20() {
 
     for i in 0..3 {
         let mut db = if i == 0 {
-            Database::builder().create(tmpfile.path(), "password").unwrap()
+            Database::builder()
+                .create(tmpfile.path(), "password")
+                .unwrap()
         } else {
-            Database::builder().open(tmpfile.path(), "password").unwrap()
+            Database::builder()
+                .open(tmpfile.path(), "password")
+                .unwrap()
         };
         db.check_integrity().unwrap();
 
@@ -1345,7 +1355,9 @@ fn check_integrity_clean() {
 
     let table_def: TableDefinition<'static, u64, u64> = TableDefinition::new("x");
 
-    let mut db = Database::builder().create(tmpfile.path(), "password").unwrap();
+    let mut db = Database::builder()
+        .create(tmpfile.path(), "password")
+        .unwrap();
     assert!(db.check_integrity().unwrap());
 
     let txn = db.begin_write().unwrap();
@@ -1360,18 +1372,24 @@ fn check_integrity_clean() {
     assert!(db.check_integrity().unwrap());
     drop(db);
 
-    let mut db = Database::builder().open(tmpfile.path(), "password").unwrap();
+    let mut db = Database::builder()
+        .open(tmpfile.path(), "password")
+        .unwrap();
     assert!(db.check_integrity().unwrap());
     drop(db);
 
-    let mut db = Database::builder().open(tmpfile.path(), "password").unwrap();
+    let mut db = Database::builder()
+        .open(tmpfile.path(), "password")
+        .unwrap();
     assert!(db.check_integrity().unwrap());
 }
 
 #[test]
 fn multimap_stats() {
     let tmpfile = create_tempfile();
-    let db = Database::builder().create(tmpfile.path(), "password").unwrap();
+    let db = Database::builder()
+        .create(tmpfile.path(), "password")
+        .unwrap();
 
     let table_def: MultimapTableDefinition<u128, u128> = MultimapTableDefinition::new("x");
 
@@ -1682,7 +1700,10 @@ fn does_not_exist() {
 
     let result = Database::open(tmpfile.path(), "password");
     if let Err(DatabaseError::Storage(StorageError::Io(e))) = result {
-        assert!(matches!(e.kind(), ErrorKind::InvalidData | ErrorKind::UnexpectedEof));
+        assert!(matches!(
+            e.kind(),
+            ErrorKind::InvalidData | ErrorKind::UnexpectedEof
+        ));
     } else {
         panic!();
     }
@@ -1694,14 +1715,20 @@ fn invalid_database_file() {
     tmpfile.write_all(b"hi").unwrap();
     let result = Database::open(tmpfile.path(), "password");
     if let Err(DatabaseError::Storage(StorageError::Io(e))) = result {
-        assert!(matches!(e.kind(), ErrorKind::InvalidData | ErrorKind::UnexpectedEof));
+        assert!(matches!(
+            e.kind(),
+            ErrorKind::InvalidData | ErrorKind::UnexpectedEof
+        ));
     } else {
         panic!();
     }
 
     let result = Database::create(tmpfile.path(), "password");
     if let Err(DatabaseError::Storage(StorageError::Io(e))) = result {
-        assert!(matches!(e.kind(), ErrorKind::InvalidData | ErrorKind::UnexpectedEof));
+        assert!(matches!(
+            e.kind(),
+            ErrorKind::InvalidData | ErrorKind::UnexpectedEof
+        ));
     } else {
         panic!();
     }
@@ -1758,7 +1785,9 @@ fn tree_balance() {
 
     // Pages are 4kb, so use a key size such that 9 keys will fit
     let key_size = 410;
-    let db = Database::builder().create(tmpfile.path(), "password").unwrap();
+    let db = Database::builder()
+        .create(tmpfile.path(), "password")
+        .unwrap();
     let txn = db.begin_write().unwrap();
 
     let elements = (EXPECTED_ORDER / 2).pow(2) - num_internal_entries;
@@ -1940,24 +1969,24 @@ fn compaction() {
 #[test]
 fn test_compaction_debug() {
     let tmpfile = create_tempfile();
-    
+
     // Create database and check salt after creation
     let db = Database::create(tmpfile.path(), "password").unwrap();
     drop(db); // Close the database before reading the file to avoid Windows locking issues
-    
+
     // Read salt before operations to verify it remains unchanged
     let salt_before = {
         let file = std::fs::File::open(tmpfile.path()).unwrap();
         const SALT_OFFSET: usize = 32; // Must match header.rs SALT_OFFSET
         let mut salt = [0u8; 16];
-        
+
         // Platform-specific file reading
         #[cfg(unix)]
         {
             use std::os::unix::fs::FileExt;
             file.read_exact_at(&mut salt, SALT_OFFSET as u64).unwrap();
         }
-        
+
         #[cfg(windows)]
         {
             use std::os::windows::fs::FileExt;
@@ -1969,7 +1998,7 @@ fn test_compaction_debug() {
                 data_offset += bytes_read;
             }
         }
-        
+
         #[cfg(target_os = "wasi")]
         {
             // Use WASI helper function for file reading
@@ -1978,7 +2007,7 @@ fn test_compaction_debug() {
         drop(file);
         salt
     };
-    
+
     // Reopen database for operations
     let db = Database::open(tmpfile.path(), "password").unwrap();
     let definition: TableDefinition<u32, &[u8]> = TableDefinition::new("x");
@@ -1993,7 +2022,7 @@ fn test_compaction_debug() {
         }
     }
     txn.commit().unwrap();
-    
+
     // Delete some data
     let txn = db.begin_write().unwrap();
     {
@@ -2006,7 +2035,7 @@ fn test_compaction_debug() {
 
     // Try to reopen - this should work
     drop(db);
-    
+
     let result = Database::open(tmpfile.path(), "password");
     match result {
         Ok(db) => {
@@ -2016,20 +2045,20 @@ fn test_compaction_debug() {
             panic!("Database reopen failed: {:?}", e);
         }
     }
-    
+
     // Read salt after operations to verify it hasn't changed
     let salt_after = {
         let file = std::fs::File::open(tmpfile.path()).unwrap();
         const SALT_OFFSET: usize = 32; // Must match header.rs SALT_OFFSET
         let mut salt = [0u8; 16];
-        
+
         // Platform-specific file reading
         #[cfg(unix)]
         {
             use std::os::unix::fs::FileExt;
             file.read_exact_at(&mut salt, SALT_OFFSET as u64).unwrap();
         }
-        
+
         #[cfg(windows)]
         {
             use std::os::windows::fs::FileExt;
@@ -2041,7 +2070,7 @@ fn test_compaction_debug() {
                 data_offset += bytes_read;
             }
         }
-        
+
         #[cfg(target_os = "wasi")]
         {
             // Use WASI helper function for file reading
@@ -2050,7 +2079,7 @@ fn test_compaction_debug() {
         drop(file);
         salt
     };
-    
+
     // Verify salt integrity - it should remain unchanged after all operations
     assert_eq!(
         salt_before, salt_after,
@@ -2058,7 +2087,7 @@ fn test_compaction_debug() {
          Before: {:?}, After: {:?}",
         salt_before, salt_after
     );
-    
+
     // Test completed successfully - database can be reopened and salt integrity is maintained
 }
 

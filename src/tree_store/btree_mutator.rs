@@ -768,7 +768,8 @@ impl<'a, 'b, K: Key, V: Value> MutateHelper<'a, 'b, K, V> {
                     LeafAccessor::new(merge_with_page.memory(), K::fixed_width(), V::fixed_width());
 
                 let single_large_value = merge_with_accessor.num_pairs() == 1
-                    && merge_with_accessor.total_length() >= crate::tree_store::EFFECTIVE_LEAF_PAGE_SIZE;
+                    && merge_with_accessor.total_length()
+                        >= crate::tree_store::EFFECTIVE_LEAF_PAGE_SIZE;
                 // Don't try to merge or rebalance, if the sibling contains a single large value
                 if single_large_value {
                     let mut child_builder = LeafBuilder::new(

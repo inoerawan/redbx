@@ -1,5 +1,5 @@
 //! Encryption module for redbx
-//! 
+//!
 //! Provides transparent encryption for user data while keeping metadata unencrypted
 //! for performance and debugging purposes.
 
@@ -9,7 +9,7 @@ pub mod utils;
 
 pub use cipher::PageCipher;
 pub use key_manager::KeyManager;
-pub use utils::{generate_salt, derive_key, generate_nonce};
+pub use utils::{derive_key, generate_nonce, generate_salt};
 
 use crate::DatabaseError;
 
@@ -27,8 +27,8 @@ pub const ENCRYPTION_OVERHEAD: usize = AES_NONCE_SIZE + AES_TAG_SIZE; // 28 byte
 pub const LEAF_METADATA_SIZE: usize = 1 + AES_NONCE_SIZE; // 13 bytes
 
 /// Effective capacity for LEAF pages after encryption overhead
-pub const EFFECTIVE_LEAF_PAGE_SIZE: usize = crate::tree_store::PAGE_SIZE 
-    - LEAF_METADATA_SIZE - ENCRYPTION_OVERHEAD; // 4055 bytes
+pub const EFFECTIVE_LEAF_PAGE_SIZE: usize =
+    crate::tree_store::PAGE_SIZE - LEAF_METADATA_SIZE - ENCRYPTION_OVERHEAD; // 4055 bytes
 
 /// Page type constants for encryption decisions
 use crate::tree_store::LEAF;
@@ -38,10 +38,10 @@ pub fn should_encrypt_page(data: &[u8]) -> bool {
     if data.is_empty() {
         return false;
     }
-    
+
     match data[0] {
-        LEAF => true,      // Encrypt user data pages
-        _ => false, // Keep navigation and metadata pages unencrypted
+        LEAF => true, // Encrypt user data pages
+        _ => false,   // Keep navigation and metadata pages unencrypted
     }
 }
 
@@ -58,7 +58,7 @@ impl SecurePassword {
             data: password.as_bytes().to_vec(),
         }
     }
-    
+
     /// Derive encryption key from password and salt
     pub fn derive_key(&self, salt: &[u8; SALT_SIZE]) -> Result<[u8; AES_KEY_SIZE], DatabaseError> {
         derive_key(&self.data, salt)

@@ -1,8 +1,11 @@
 //! AES-GCM encryption/decryption implementation
 
-use crate::DatabaseError;
 use super::{AES_KEY_SIZE, AES_NONCE_SIZE};
-use aes_gcm::{Aes256Gcm, Key, Nonce, aead::{Aead, KeyInit}};
+use crate::DatabaseError;
+use aes_gcm::{
+    Aes256Gcm, Key, Nonce,
+    aead::{Aead, KeyInit},
+};
 
 pub struct PageCipher {
     cipher: Aes256Gcm,
@@ -24,17 +27,27 @@ impl PageCipher {
         Self { cipher }
     }
 
-    pub fn encrypt_with_nonce(&self, nonce: &[u8; AES_NONCE_SIZE], data: &[u8]) -> Result<Vec<u8>, DatabaseError> {
+    pub fn encrypt_with_nonce(
+        &self,
+        nonce: &[u8; AES_NONCE_SIZE],
+        data: &[u8],
+    ) -> Result<Vec<u8>, DatabaseError> {
         let nonce = Nonce::from_slice(nonce);
 
-        self.cipher.encrypt(nonce, data)
+        self.cipher
+            .encrypt(nonce, data)
             .map_err(|e| DatabaseError::EncryptionFailed(format!("AES-GCM encryption failed: {e}")))
     }
 
-    pub fn decrypt_with_nonce(&self, nonce: &[u8; AES_NONCE_SIZE], ciphertext: &[u8]) -> Result<Vec<u8>, DatabaseError> {
+    pub fn decrypt_with_nonce(
+        &self,
+        nonce: &[u8; AES_NONCE_SIZE],
+        ciphertext: &[u8],
+    ) -> Result<Vec<u8>, DatabaseError> {
         let nonce = Nonce::from_slice(nonce);
 
-        self.cipher.decrypt(nonce, ciphertext)
+        self.cipher
+            .decrypt(nonce, ciphertext)
             .map_err(|e| DatabaseError::DecryptionFailed(format!("AES-GCM decryption failed: {e}")))
     }
 }

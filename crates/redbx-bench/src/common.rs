@@ -38,7 +38,7 @@ pub fn make_rng() -> fastrand::Rng {
 pub fn calculate_overhead(baseline: Duration, encrypted: Duration) -> f64 {
     let baseline_nanos = baseline.as_nanos() as f64;
     let encrypted_nanos = encrypted.as_nanos() as f64;
-    
+
     if baseline_nanos == 0.0 {
         0.0
     } else {

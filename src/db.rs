@@ -1084,27 +1084,28 @@ impl Builder {
         const HEADER_SIZE_FOR_SALT: usize = SALT_OFFSET + 16;
 
         let mut header_buffer = [0u8; HEADER_SIZE_FOR_SALT];
-        
+
         #[cfg(unix)]
         {
             use std::os::unix::fs::FileExt;
             file.read_exact_at(&mut header_buffer, 0)
                 .map_err(|e| DatabaseError::Storage(StorageError::Io(e)))?;
         }
-        
+
         #[cfg(windows)]
         {
             use std::os::windows::fs::FileExt;
             let mut offset = 0u64;
             let mut data_offset = 0;
             while data_offset < header_buffer.len() {
-                let bytes_read = file.seek_read(&mut header_buffer[data_offset..], offset)
+                let bytes_read = file
+                    .seek_read(&mut header_buffer[data_offset..], offset)
                     .map_err(|e| DatabaseError::Storage(StorageError::Io(e)))?;
                 offset += bytes_read as u64;
                 data_offset += bytes_read;
             }
         }
-        
+
         #[cfg(target_os = "wasi")]
         {
             read_exact_at(file, &mut header_buffer, 0)
@@ -1112,8 +1113,13 @@ impl Builder {
         }
 
         // Extract the salt from the header
-        let salt = header_buffer[SALT_OFFSET..(SALT_OFFSET + 16)].try_into()
-            .map_err(|_| DatabaseError::Storage(StorageError::Corrupted("Invalid salt in database header".to_string())))?;
+        let salt = header_buffer[SALT_OFFSET..(SALT_OFFSET + 16)]
+            .try_into()
+            .map_err(|_| {
+                DatabaseError::Storage(StorageError::Corrupted(
+                    "Invalid salt in database header".to_string(),
+                ))
+            })?;
 
         Ok(salt)
     }
@@ -1190,7 +1196,11 @@ impl Builder {
     /// * if the file does not exist, or is an empty file, a new database will be initialized in it
     /// * if the file is a valid redb database, it will be opened
     /// * otherwise this function will return an error
-    pub fn create(&self, path: impl AsRef<Path>, password: &str) -> Result<Database, DatabaseError> {
+    pub fn create(
+        &self,
+        path: impl AsRef<Path>,
+        password: &str,
+    ) -> Result<Database, DatabaseError> {
         let file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -1200,7 +1210,7 @@ impl Builder {
 
         // Check if this is an existing database file by checking its size
         let file_size = file.metadata()?.len();
-        
+
         if file_size == 0 {
             // New database file - create with new backend
             let backend = EncryptedFileBackend::new(file, password)?;
@@ -1367,8 +1377,7 @@ fn read_exact_at(file: &File, mut buf: &mut [u8], mut offset: u64) -> io::Result
 #[cfg(test)]
 mod test {
     use crate::{
-        Database, DatabaseError, Durability, ReadableTable,
-        StorageError, TableDefinition,
+        Database, DatabaseError, Durability, ReadableTable, StorageError, TableDefinition,
     };
     use std::io::ErrorKind;
 
@@ -1586,11 +1595,14 @@ mod test {
     fn open_empty_file() {
         let tmpfile = crate::create_tempfile();
 
-        let err = Database::builder().open(tmpfile.path(), "test_password").unwrap_err();
+        let err = Database::builder()
+            .open(tmpfile.path(), "test_password")
+            .unwrap_err();
 
         match err {
             DatabaseError::Storage(StorageError::Io(err))
-                if err.kind() == ErrorKind::InvalidData || err.kind() == ErrorKind::UnexpectedEof => {}
+                if err.kind() == ErrorKind::InvalidData
+                    || err.kind() == ErrorKind::UnexpectedEof => {}
             err => panic!("Unexpected error for empty file: {err}"),
         }
     }
