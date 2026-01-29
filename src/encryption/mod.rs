@@ -31,8 +31,7 @@ pub const EFFECTIVE_LEAF_PAGE_SIZE: usize = crate::tree_store::PAGE_SIZE
     - LEAF_METADATA_SIZE - ENCRYPTION_OVERHEAD; // 4055 bytes
 
 /// Page type constants for encryption decisions
-pub const LEAF_PAGE_TYPE: u8 = 1;
-pub const BRANCH_PAGE_TYPE: u8 = 2;
+use crate::tree_store::LEAF;
 
 /// Determines if a page should be encrypted based on its type
 pub fn should_encrypt_page(data: &[u8]) -> bool {
@@ -41,9 +40,8 @@ pub fn should_encrypt_page(data: &[u8]) -> bool {
     }
     
     match data[0] {
-        LEAF_PAGE_TYPE => true,      // Encrypt user data pages
-        BRANCH_PAGE_TYPE => false,   // Keep navigation pages unencrypted
-        _ => false,                  // Keep metadata pages unencrypted
+        LEAF => true,      // Encrypt user data pages
+        _ => false, // Keep navigation and metadata pages unencrypted
     }
 }
 

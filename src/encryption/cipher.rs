@@ -19,7 +19,7 @@ impl std::fmt::Debug for PageCipher {
 impl PageCipher {
     pub fn new(key: &[u8; AES_KEY_SIZE]) -> Self {
         let key = Key::<Aes256Gcm>::from_slice(key);
-        let cipher = Aes256Gcm::new(&key);
+        let cipher = Aes256Gcm::new(key);
 
         Self { cipher }
     }
@@ -28,14 +28,14 @@ impl PageCipher {
         let nonce = Nonce::from_slice(nonce);
 
         self.cipher.encrypt(nonce, data)
-            .map_err(|e| DatabaseError::EncryptionFailed(format!("AES-GCM encryption failed: {}", e)))
+            .map_err(|e| DatabaseError::EncryptionFailed(format!("AES-GCM encryption failed: {e}")))
     }
 
     pub fn decrypt_with_nonce(&self, nonce: &[u8; AES_NONCE_SIZE], ciphertext: &[u8]) -> Result<Vec<u8>, DatabaseError> {
         let nonce = Nonce::from_slice(nonce);
 
         self.cipher.decrypt(nonce, ciphertext)
-            .map_err(|e| DatabaseError::DecryptionFailed(format!("AES-GCM decryption failed: {}", e)))
+            .map_err(|e| DatabaseError::DecryptionFailed(format!("AES-GCM decryption failed: {e}")))
     }
 }
 

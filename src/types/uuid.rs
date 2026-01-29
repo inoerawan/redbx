@@ -65,7 +65,7 @@ mod tests {
     fn test_uuid_table() {
         let uuid1 = Uuid::new_v4();
         let uuid2 = Uuid::new_v4();
-        let db = Database::create(NamedTempFile::new().unwrap()).unwrap();
+        let db = Database::create(NamedTempFile::new().unwrap(), "password").unwrap();
         let write_txn = db.begin_write().unwrap();
         {
             let mut table = write_txn.open_table(UUID_TABLE).unwrap();

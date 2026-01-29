@@ -5,6 +5,7 @@
 
 use crate::encryption::{PageCipher, KeyManager, should_encrypt_page, AES_NONCE_SIZE};
 use crate::tree_store::page_store::header::PAGE_SIZE;
+use crate::tree_store::{BRANCH, LEAF};
 use crate::{DatabaseError, Result, StorageBackend, StorageError};
 #[cfg(feature = "logging")]
 use log::warn;
@@ -37,7 +38,7 @@ impl From<DatabaseError> for EncryptedBackendError {
         match err {
             DatabaseError::DecryptionFailed(_) => EncryptedBackendError::DecryptionFailed(err),
             DatabaseError::EncryptionFailed(_) => EncryptedBackendError::EncryptionFailed(err),
-            other => EncryptedBackendError::Io(io::Error::new(io::ErrorKind::Other, format!("{:?}", other))),
+            other => EncryptedBackendError::Io(io::Error::other(format!("{other:?}"))),
         }
     }
 }
@@ -47,10 +48,10 @@ impl From<EncryptedBackendError> for io::Error {
         match err {
             EncryptedBackendError::Io(io_err) => io_err,
             EncryptedBackendError::DecryptionFailed(db_err) => {
-                io::Error::new(io::ErrorKind::Other, format!("DecryptionFailed({:?})", db_err))
+                io::Error::other(format!("DecryptionFailed({db_err:?})"))
             }
             EncryptedBackendError::EncryptionFailed(db_err) => {
-                io::Error::new(io::ErrorKind::Other, format!("EncryptionFailed({:?})", db_err))
+                io::Error::other(format!("EncryptionFailed({db_err:?})"))
             }
         }
     }
@@ -152,8 +153,7 @@ impl EncryptedFileBackend {
 
                 Ok(backend)
             }
-            Err(TryLockError::WouldBlock) => Err(DatabaseError::DatabaseAlreadyOpen),
-            Err(TryLockError::Error(_)) => Err(DatabaseError::DatabaseAlreadyOpen),
+            Err(TryLockError::WouldBlock | TryLockError::Error(_)) => Err(DatabaseError::DatabaseAlreadyOpen),
         }
     }
 
@@ -204,8 +204,7 @@ impl EncryptedFileBackend {
                     lock_supported: false,
                 }
             }
-            Err(TryLockError::WouldBlock) => return Err(DatabaseError::DatabaseAlreadyOpen),
-            Err(TryLockError::Error(_)) => return Err(DatabaseError::DatabaseAlreadyOpen),
+            Err(TryLockError::WouldBlock | TryLockError::Error(_)) => return Err(DatabaseError::DatabaseAlreadyOpen),
         };
 
         Ok(backend)
@@ -219,9 +218,9 @@ impl EncryptedFileBackend {
     fn read_and_decrypt_with_errors(&self, offset: u64, out: &mut [u8]) -> Result<(), EncryptedBackendError> {
         self.read_exact_at(out, offset)?;
 
-        if self.should_encrypt_page(out) {
+        if should_encrypt_page(out) {
             let page_type = out[0];
-            let nonce = &out[1..1+AES_NONCE_SIZE];
+            let nonce = &out[1..=AES_NONCE_SIZE];
             let encrypted_data = &out[1+AES_NONCE_SIZE..];
 
             let decrypted = self.cipher.decrypt_with_nonce(
@@ -230,12 +229,12 @@ impl EncryptedFileBackend {
             )?;
 
             out[0] = page_type;
-            out[1..1+decrypted.len()].copy_from_slice(&decrypted);
+            out[1..=decrypted.len()].copy_from_slice(&decrypted);
             if decrypted.len() + 1 < out.len() {
                 out[1+decrypted.len()..].fill(0);
             }
 
-            if page_type != 1 && page_type != 2 { // LEAF=1, BRANCH=2
+            if page_type != LEAF && page_type != BRANCH {
                 return Err(EncryptedBackendError::DecryptionFailed(
                     DatabaseError::CorruptedEncryption("Invalid page type after decryption".to_string())
                 ));
@@ -260,28 +259,20 @@ impl EncryptedFileBackend {
         let mut test_buffer = [0u8; PAGE_SIZE];
         match self.read_and_decrypt_with_errors(PAGE_SIZE as u64, &mut test_buffer) {
             Ok(()) => Ok(()),
-            Err(EncryptedBackendError::DecryptionFailed(_)) => {
+            Err(EncryptedBackendError::DecryptionFailed(_) | EncryptedBackendError::EncryptionFailed(_)) => {
                 Err(DatabaseError::IncorrectPassword)
             }
-            Err(EncryptedBackendError::Io(_io_err)) => {
+            Err(EncryptedBackendError::Io(_)) => {
                 // For I/O errors, don't assume it's a password issue
-                // This could be a legitimate I/O error or the page might not exist
                 Ok(())
-            }
-            Err(EncryptedBackendError::EncryptionFailed(_)) => {
-                Err(DatabaseError::IncorrectPassword)
             }
         }
     }
 
-    /// Check if a page should be encrypted based on its type
-    fn should_encrypt_page(&self, data: &[u8]) -> bool {
-        should_encrypt_page(data)
-    }
 
     /// Encrypt and write a page with unencrypted page type header
     fn encrypt_and_write(&self, offset: u64, data: &[u8]) -> Result<(), io::Error> {
-        if !self.should_encrypt_page(data) {
+        if !should_encrypt_page(data) {
             // Write unencrypted (BRANCH pages, metadata)
             self.write_all_at(data, offset)?;
             self.file.sync_all()?;
@@ -304,19 +295,19 @@ impl EncryptedFileBackend {
         };
 
         let nonce = crate::encryption::generate_nonce()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("{:?}", e)))?;
+            .map_err(|e| io::Error::other(format!("{e:?}")))?;
 
         let encrypted_data = self.cipher.encrypt_with_nonce(&nonce, plaintext)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("{:?}", e)))?;
+            .map_err(|e| io::Error::other(format!("{e:?}")))?;
 
 
         // Write: [page_type(1)] + [nonce(12)] + [encrypted_data + auth_tag]
         let mut page_buffer = [0u8; PAGE_SIZE];
         page_buffer[0] = page_type; // Unencrypted page type
-        page_buffer[1..1+AES_NONCE_SIZE].copy_from_slice(&nonce); // Unencrypted nonce
+        page_buffer[1..=AES_NONCE_SIZE].copy_from_slice(&nonce); // Unencrypted nonce
 
         // Write the encrypted data (should fit since we limited plaintext size)
-        page_buffer[1+AES_NONCE_SIZE..1+AES_NONCE_SIZE+encrypted_data.len()].copy_from_slice(&encrypted_data);
+        page_buffer[1 + AES_NONCE_SIZE..1 + AES_NONCE_SIZE + encrypted_data.len()].copy_from_slice(&encrypted_data);
         self.write_all_at(&page_buffer, offset)?;
         self.file.sync_all()?;
         Ok(())
@@ -325,86 +316,93 @@ impl EncryptedFileBackend {
     fn read_and_decrypt(&self, offset: u64, out: &mut [u8]) -> Result<(), io::Error> {
         // For encrypted pages, we need to read the full page to get the correct format
         // regardless of the output buffer size
-        if out.len() < PAGE_SIZE {
-            // Read into a full page buffer first, then determine if it's encrypted
-            let mut full_page = [0u8; PAGE_SIZE];
-            self.read_exact_at(&mut full_page, offset)?;
+        match out.len().cmp(&PAGE_SIZE) {
+            std::cmp::Ordering::Less => {
+                // Read into a full page buffer first, then determine if it's encrypted
+                let mut full_page = [0u8; PAGE_SIZE];
+                self.read_exact_at(&mut full_page, offset)?;
 
-            if self.should_encrypt_page(&full_page) {
-                // LEAF page decryption with preserved page type
-                let page_type = full_page[0];
-                let nonce = &full_page[1..1+AES_NONCE_SIZE]; // Nonce is unencrypted
-                let encrypted_data = &full_page[1+AES_NONCE_SIZE..]; // Encrypted payload
-
-                let decrypted = self.cipher.decrypt_with_nonce(
-                    nonce.try_into().map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid nonce size"))?,
-                    encrypted_data
-                ).map_err(|e| io::Error::new(io::ErrorKind::Other, format!("DecryptionFailed({:?})", e)))?;
-
-                let mut decrypted_page = [0u8; PAGE_SIZE];
-                decrypted_page[0] = page_type; // Keep page type at byte 0
-                decrypted_page[1..1+decrypted.len()].copy_from_slice(&decrypted);
-
-                let copy_len = out.len().min(PAGE_SIZE);
-                out[..copy_len].copy_from_slice(&decrypted_page[..copy_len]);
-            } else {
-                let copy_len = out.len().min(PAGE_SIZE);
-                out[..copy_len].copy_from_slice(&full_page[..copy_len]);
-            }
-        } else if out.len() == PAGE_SIZE {
-            self.read_exact_at(out, offset)?;
-
-            if self.should_encrypt_page(out) {
-                let page_type = out[0];
-                let nonce = &out[1..1+AES_NONCE_SIZE]; // Nonce is unencrypted
-                let encrypted_data = &out[1+AES_NONCE_SIZE..]; // Encrypted payload
-
-                let decrypted = self.cipher.decrypt_with_nonce(
-                    nonce.try_into().map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid nonce size"))?,
-                    encrypted_data
-                ).map_err(|e| io::Error::new(io::ErrorKind::Other, format!("DecryptionFailed({:?})", e)))?;
-
-                // Reconstruct page: [page_type] + [decrypted_data]
-                out[0] = page_type; // Keep page type at byte 0
-                out[1..1+decrypted.len()].copy_from_slice(&decrypted);
-                // Clear remaining bytes if any
-                if decrypted.len() + 1 < out.len() {
-                    out[1+decrypted.len()..].fill(0);
-                }
-            }
-        } else {
-            self.read_exact_at(out, offset)?;
-
-            // For large reads, we need to decrypt each page individually
-            let mut current_offset = 0u64;
-            while current_offset < out.len() as u64 {
-                let remaining = out.len() as u64 - current_offset;
-                let page_size = PAGE_SIZE.min(remaining as usize);
-
-                let page_start = current_offset as usize;
-                let page_end = page_start + page_size;
-                let page_data = &mut out[page_start..page_end];
-
-                if page_size == PAGE_SIZE && self.should_encrypt_page(page_data) {
-                    // Only decrypt if it's a full page and marked for encryption
-                    let page_type = page_data[0];
-                    let nonce = &page_data[1..1+AES_NONCE_SIZE];
-                    let encrypted_data = &page_data[1+AES_NONCE_SIZE..];
+                if should_encrypt_page(&full_page) {
+                    // LEAF page decryption with preserved page type
+                    let page_type = full_page[0];
+                    let nonce = &full_page[1..=AES_NONCE_SIZE]; // Nonce is unencrypted
+                    let encrypted_data = &full_page[1 + AES_NONCE_SIZE..]; // Encrypted payload
 
                     let decrypted = self.cipher.decrypt_with_nonce(
                         nonce.try_into().map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid nonce size"))?,
                         encrypted_data
-                    ).map_err(|e| io::Error::new(io::ErrorKind::Other, format!("DecryptionFailed({:?})", e)))?;
+                    ).map_err(|e| io::Error::other(format!("DecryptionFailed({e:?})")))?;
+
+                    let mut decrypted_page = [0u8; PAGE_SIZE];
+                    decrypted_page[0] = page_type; // Keep page type at byte 0
+                    decrypted_page[1..=decrypted.len()].copy_from_slice(&decrypted);
+
+                    let copy_len = out.len().min(PAGE_SIZE);
+                    out[..copy_len].copy_from_slice(&decrypted_page[..copy_len]);
+                } else {
+                    let copy_len = out.len().min(PAGE_SIZE);
+                    out[..copy_len].copy_from_slice(&full_page[..copy_len]);
+                }
+            }
+            std::cmp::Ordering::Equal => {
+                self.read_exact_at(out, offset)?;
+
+                if should_encrypt_page(out) {
+                    let page_type = out[0];
+                    let nonce = &out[1..=AES_NONCE_SIZE]; // Nonce is unencrypted
+                    let encrypted_data = &out[1 + AES_NONCE_SIZE..]; // Encrypted payload
+
+                    let decrypted = self.cipher.decrypt_with_nonce(
+                        nonce.try_into().map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid nonce size"))?,
+                        encrypted_data
+                    ).map_err(|e| io::Error::other(format!("DecryptionFailed({e:?})")))?;
 
                     // Reconstruct page: [page_type] + [decrypted_data]
-                    page_data[0] = page_type;
-                    page_data[1..1+decrypted.len()].copy_from_slice(&decrypted);
-                    if decrypted.len() + 1 < page_data.len() {
-                        page_data[1+decrypted.len()..].fill(0);
+                    out[0] = page_type; // Keep page type at byte 0
+                    out[1..=decrypted.len()].copy_from_slice(&decrypted);
+                    // Clear remaining bytes if any
+                    if decrypted.len() + 1 < out.len() {
+                        out[1 + decrypted.len()..].fill(0);
                     }
                 }
+            }
+            std::cmp::Ordering::Greater => {
+                self.read_exact_at(out, offset)?;
 
-                current_offset += page_size as u64;
+                // For large reads, we need to decrypt each page individually
+                let mut current_offset = 0u64;
+                while current_offset < out.len() as u64 {
+                    let remaining = out.len() as u64 - current_offset;
+                    
+                    // Safety: remaining is strictly < out.len() (usize), so try_from will succeed
+                    let remaining_usize = usize::try_from(remaining).unwrap_or(usize::MAX);
+                    let page_size = PAGE_SIZE.min(remaining_usize);
+
+                    let page_start = usize::try_from(current_offset).unwrap();
+                    let page_end = page_start + page_size;
+                    let page_data = &mut out[page_start..page_end];
+
+                    if page_size == PAGE_SIZE && should_encrypt_page(page_data) {
+                        // Only decrypt if it's a full page and marked for encryption
+                        let page_type = page_data[0];
+                        let nonce = &page_data[1..=AES_NONCE_SIZE];
+                        let encrypted_data = &page_data[1 + AES_NONCE_SIZE..];
+
+                        let decrypted = self.cipher.decrypt_with_nonce(
+                            nonce.try_into().map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid nonce size"))?,
+                            encrypted_data
+                        ).map_err(|e| io::Error::other(format!("DecryptionFailed({e:?})")))?;
+
+                        // Reconstruct page: [page_type] + [decrypted_data]
+                        page_data[0] = page_type;
+                        page_data[1..=decrypted.len()].copy_from_slice(&decrypted);
+                        if decrypted.len() + 1 < page_data.len() {
+                            page_data[1 + decrypted.len()..].fill(0);
+                        }
+                    }
+
+                    current_offset += page_size as u64;
+                }
             }
         }
 
@@ -514,7 +512,7 @@ fn write_all_at(file: &File, mut buf: &[u8], mut offset: u64) -> io::Result<()> 
 mod tests {
     use super::*;
     use tempfile::NamedTempFile;
-    use crate::encryption::{LEAF_PAGE_TYPE, BRANCH_PAGE_TYPE, KeyManager, PageCipher};
+    use crate::encryption::{KeyManager, PageCipher};
 
     #[test]
     fn test_encrypted_backend_creation() {
@@ -537,19 +535,19 @@ mod tests {
     fn test_should_encrypt_page() {
         let temp_file = NamedTempFile::new().unwrap();
         let file = File::open(temp_file.path()).unwrap();
-        let backend = EncryptedFileBackend::new(file, "test_password").unwrap();
+        let _backend = EncryptedFileBackend::new(file, "test_password").unwrap();
 
         // LEAF page should be encrypted
-        let leaf_data = [LEAF_PAGE_TYPE, 0, 1, 2, 3];
-        assert!(backend.should_encrypt_page(&leaf_data));
+        let leaf_data = [LEAF, 0, 1, 2, 3];
+        assert!(should_encrypt_page(&leaf_data));
 
         // BRANCH page should not be encrypted
-        let branch_data = [BRANCH_PAGE_TYPE, 0, 1, 2, 3];
-        assert!(!backend.should_encrypt_page(&branch_data));
+        let branch_data = [BRANCH, 0, 1, 2, 3];
+        assert!(!should_encrypt_page(&branch_data));
 
         // Empty data should not be encrypted
         let empty_data = [];
-        assert!(!backend.should_encrypt_page(&empty_data));
+        assert!(!should_encrypt_page(&empty_data));
     }
 
     #[test]
@@ -560,10 +558,10 @@ mod tests {
         let backend = EncryptedFileBackend::new(file, "test_password").unwrap();
 
         // Test data
-        let original_data = [LEAF_PAGE_TYPE, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        let original_data = [LEAF, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
         // Test that the data should be encrypted
-        assert!(backend.should_encrypt_page(&original_data));
+        assert!(should_encrypt_page(&original_data));
 
         // Test encryption logic directly
         let salt = backend.get_salt();
@@ -589,16 +587,16 @@ mod tests {
         // Test that BRANCH pages are not encrypted
         let temp_file = NamedTempFile::new().unwrap();
         let file = File::create(temp_file.path()).unwrap();
-        let backend = EncryptedFileBackend::new(file, "test_password").unwrap();
+        let _backend = EncryptedFileBackend::new(file, "test_password").unwrap();
 
         // Test data for BRANCH page
-        let original_data = [BRANCH_PAGE_TYPE, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        let original_data = [BRANCH, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
         // Test that the data should NOT be encrypted
-        assert!(!backend.should_encrypt_page(&original_data));
+        assert!(!should_encrypt_page(&original_data));
 
         // Test that the data would be written as-is (no encryption)
         // This verifies the encryption decision logic works correctly
-        assert_eq!(original_data[0], BRANCH_PAGE_TYPE);
+        assert_eq!(original_data[0], BRANCH);
     }
 }

@@ -447,7 +447,7 @@ mod tests {
     }
     #[test]
     fn test_fixed_offset_table() {
-        let db = Database::create(NamedTempFile::new().unwrap()).unwrap();
+        let db = Database::create(NamedTempFile::new().unwrap(), "password").unwrap();
         let write_txn = db.begin_write().unwrap();
         {
             let mut table = write_txn.open_table(FIXED_OFFSET_TABLE).unwrap();
@@ -466,7 +466,7 @@ mod tests {
     }
     #[test]
     fn test_naive_date_table() {
-        let db = Database::create(NamedTempFile::new().unwrap()).unwrap();
+        let db = Database::create(NamedTempFile::new().unwrap(), "password").unwrap();
         let write_txn = db.begin_write().unwrap();
         {
             let mut table = write_txn.open_table(NAIVE_DATE_TABLE).unwrap();
@@ -485,7 +485,7 @@ mod tests {
     }
     #[test]
     fn test_naive_time_table() {
-        let db = Database::create(NamedTempFile::new().unwrap()).unwrap();
+        let db = Database::create(NamedTempFile::new().unwrap(), "password").unwrap();
         let write_txn = db.begin_write().unwrap();
         {
             let mut table = write_txn.open_table(NAIVE_TIME_TABLE).unwrap();
@@ -505,7 +505,7 @@ mod tests {
 
     #[test]
     fn test_naive_datetime_table() {
-        let db = Database::create(NamedTempFile::new().unwrap()).unwrap();
+        let db = Database::create(NamedTempFile::new().unwrap(), "password").unwrap();
         let write_txn = db.begin_write().unwrap();
         {
             let mut table = write_txn.open_table(NAIVE_DATETIME_TABLE).unwrap();
@@ -529,7 +529,7 @@ mod tests {
     #[test]
     fn test_datetime_fixed_offset_table() {
         let now = Local::now().fixed_offset();
-        let db = Database::create(NamedTempFile::new().unwrap()).unwrap();
+        let db = Database::create(NamedTempFile::new().unwrap(), "password").unwrap();
         let write_txn = db.begin_write().unwrap();
         {
             let mut table = write_txn.open_table(DATETIME_FIXED_OFFSET_TABLE).unwrap();
