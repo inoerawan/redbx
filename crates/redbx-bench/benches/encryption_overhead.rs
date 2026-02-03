@@ -335,9 +335,9 @@ fn compare_results(redb_results: Vec<BenchmarkResult>, redbx_results: Vec<Benchm
 
         table.add_row(vec![
             Cell::new(&redb_result.name),
-            Cell::new(&format_duration(redb_result.duration)),
-            Cell::new(&format_duration(redbx_result.duration)),
-            Cell::new(&format!("{:.1}%", overhead)),
+            Cell::new(format_duration(redb_result.duration)),
+            Cell::new(format_duration(redbx_result.duration)),
+            Cell::new(format!("{:.1}%", overhead)),
             Cell::new(status),
         ]);
 
