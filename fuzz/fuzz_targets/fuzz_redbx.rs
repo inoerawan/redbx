@@ -1,7 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use redb::{
+use redbx::{
     AccessGuard, Database, Durability, Error, MultimapTable, MultimapTableDefinition,
     MultimapValue, ReadableDatabase, ReadableMultimapTable, ReadableTable, ReadableTableMetadata, Savepoint,
     StorageBackend, Table, TableDefinition, WriteTransaction,
@@ -17,7 +17,7 @@ use tempfile::NamedTempFile;
 mod common;
 use crate::FuzzerSavepoint::{Ephemeral, NotYetDurablePersistent, Persistent};
 use common::*;
-use redb::backends::FileBackend;
+use redbx::backends::FileBackend;
 
 // These slow down the fuzzer, so don't create too many
 const MAX_PERSISTENT_SAVEPOINTS: usize = 10;
@@ -53,11 +53,7 @@ impl FuzzerBackend {
         if self
             .countdown
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| {
-                if x > 0 {
-                    Some(x - 1)
-                } else {
-                    None
-                }
+                if x > 0 { Some(x - 1) } else { None }
             })
             .is_err()
         {
@@ -317,7 +313,7 @@ fn handle_multimap_table_op(
     op: &FuzzOperation,
     reference: &mut BTreeMap<u64, BTreeSet<usize>>,
     table: &mut MultimapTable<u64, &[u8]>,
-) -> Result<(), redb::Error> {
+) -> Result<(), redbx::Error> {
     match op {
         FuzzOperation::Get { key } => {
             let key = key.value;
@@ -394,7 +390,7 @@ fn handle_multimap_table_op(
                 };
             let mut iter: Box<
                 dyn Iterator<
-                    Item = Result<(AccessGuard<u64>, MultimapValue<&[u8]>), redb::StorageError>,
+                    Item = Result<(AccessGuard<u64>, MultimapValue<&[u8]>), redbx::StorageError>,
                 >,
             > = if *reversed {
                 Box::new(table.range(start..end)?.rev())
@@ -420,7 +416,7 @@ fn handle_table_op(
     op: &FuzzOperation,
     reference: &mut BTreeMap<u64, usize>,
     table: &mut Table<u64, &[u8]>,
-) -> Result<(), redb::Error> {
+) -> Result<(), redbx::Error> {
     match op {
         FuzzOperation::Get { key } => {
             let key = key.value;
@@ -507,7 +503,7 @@ fn handle_table_op(
             };
             let mut iter: Box<
                 dyn Iterator<
-                    Item = Result<(AccessGuard<u64>, AccessGuard<&[u8]>), redb::StorageError>,
+                    Item = Result<(AccessGuard<u64>, AccessGuard<&[u8]>), redbx::StorageError>,
                 >,
             > = if *reversed {
                 Box::new(table.extract_if(|x, _| x % modulus == 0)?.rev())
@@ -551,7 +547,7 @@ fn handle_table_op(
             };
             let mut iter: Box<
                 dyn Iterator<
-                    Item = Result<(AccessGuard<u64>, AccessGuard<&[u8]>), redb::StorageError>,
+                    Item = Result<(AccessGuard<u64>, AccessGuard<&[u8]>), redbx::StorageError>,
                 >,
             > = if *reversed {
                 Box::new(
@@ -612,7 +608,7 @@ fn handle_table_op(
             };
             let mut iter: Box<
                 dyn Iterator<
-                    Item = Result<(AccessGuard<u64>, AccessGuard<&[u8]>), redb::StorageError>,
+                    Item = Result<(AccessGuard<u64>, AccessGuard<&[u8]>), redbx::StorageError>,
                 >,
             > = if *reversed {
                 Box::new(table.range(start..end)?.rev())
@@ -634,7 +630,7 @@ fn handle_table_op(
     Ok(())
 }
 
-fn is_simulated_io_error(err: &redb::Error) -> bool {
+fn is_simulated_io_error(err: &redbx::Error) -> bool {
     match err {
         Error::Io(io_err) => {
             matches!(io_err.kind(), ErrorKind::Other)
@@ -660,8 +656,8 @@ fn exec_table_crash_support<T: Clone + Debug>(
         &mut BTreeMap<u64, T>,
         &FuzzTransaction,
         &mut SavepointManager<T>,
-    ) -> Result<(), redb::Error>,
-) -> Result<(), redb::Error> {
+    ) -> Result<(), redbx::Error>,
+) -> Result<(), redbx::Error> {
     let mut redb_file: NamedTempFile = NamedTempFile::new().unwrap();
     let backend = FuzzerBackend::new(FileBackend::new(open_dup(&redb_file))?);
     let mut countdown = backend.countdown.clone();
@@ -920,7 +916,7 @@ fn handle_savepoints<T: Clone>(
     transaction: &FuzzTransaction,
     savepoints: &mut SavepointManager<T>,
     countdown: Arc<AtomicU64>,
-) -> Result<bool, redb::Error> {
+) -> Result<bool, redbx::Error> {
     if transaction.create_ephemeral_savepoint {
         savepoints.ephemeral_savepoint(&txn, &reference)?;
     }
@@ -955,7 +951,7 @@ fn apply_crashable_transaction_multimap(
     uncommitted_reference: &mut BTreeMap<u64, BTreeSet<usize>>,
     transaction: &FuzzTransaction,
     savepoints: &mut SavepointManager<BTreeSet<usize>>,
-) -> Result<(), redb::Error> {
+) -> Result<(), redbx::Error> {
     {
         let mut table = txn.open_multimap_table(MULTIMAP_TABLE_DEF)?;
         for op in transaction.ops.iter() {
@@ -980,7 +976,7 @@ fn apply_crashable_transaction(
     uncommitted_reference: &mut BTreeMap<u64, usize>,
     transaction: &FuzzTransaction,
     savepoints: &mut SavepointManager<usize>,
-) -> Result<(), redb::Error> {
+) -> Result<(), redbx::Error> {
     {
         let mut table = txn.open_table(TABLE_DEF)?;
         for op in transaction.ops.iter() {
@@ -1003,7 +999,7 @@ fn apply_crashable_transaction(
 fn assert_multimap_value_eq(
     mut iter: MultimapValue<&[u8]>,
     reference: Option<&BTreeSet<usize>>,
-) -> Result<(), redb::Error> {
+) -> Result<(), redbx::Error> {
     if let Some(values) = reference {
         assert_eq!(values.len() as u64, iter.len());
         for value in values.iter() {

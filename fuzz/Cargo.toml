@@ -1,5 +1,5 @@
 [package]
-name = "redb-fuzz"
+name = "redbx-fuzz"
 version = "0.0.0"
 authors = ["Automatically generated"]
 publish = false
@@ -15,7 +15,7 @@ tempfile = "3.2.0"
 rand = "0.8.5"
 rand_distr = "0.4.3"
 
-[dependencies.redb]
+[dependencies.redbx]
 path = ".."
 
 # Prevent this from interfering with workspaces
@@ -23,7 +23,7 @@ path = ".."
 members = ["."]
 
 [[bin]]
-name = "fuzz_redb"
-path = "fuzz_targets/fuzz_redb.rs"
+name = "fuzz_redbx"
+path = "fuzz_targets/fuzz_redbx.rs"
 test = false
 doc = false

@@ -83,7 +83,7 @@ jobs:
             rustup target add wasm32-unknown-unknown
             # Not possible to set default members for specific a target:
             # https://github.com/rust-lang/cargo/issues/6179
-            command="cargo check -p $(cargo pkgid) -p redb-derive --target wasm32-unknown-unknown"
+            command="cargo check -p $(cargo pkgid) -p redbx-derive --target wasm32-unknown-unknown"
             $command
             $command --all-features
             $command --no-default-features

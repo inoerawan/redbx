@@ -20,18 +20,18 @@ release: pre
     cargo build --release
 
 flamegraph:
-    cargo flamegraph -p redb-bench --bench redb_benchmark
+    cargo flamegraph -p redbx-bench --bench encryption_overhead
     firefox ./flamegraph.svg
 
 publish_py: test_py
     docker pull quay.io/pypa/manylinux2014_x86_64
-    MATURIN_PYPI_TOKEN=$(cat ~/.pypi/redb_token) docker run -it --rm -e "MATURIN_PYPI_TOKEN" -v `pwd`:/redb-ro:ro quay.io/pypa/manylinux2014_x86_64 /redb-ro/crates/redb-python/py_publish.sh
+    MATURIN_PYPI_TOKEN=$(cat ~/.pypi/redbx_token) docker run -it --rm -e "MATURIN_PYPI_TOKEN" -v `pwd`:/redbx-ro:ro quay.io/pypa/manylinux2014_x86_64 /redbx-ro/crates/redbx-python/py_publish.sh
 
 test_py: install_py
-    python3 -m unittest discover --start-directory=./crates/redb-python
+    python3 -m unittest discover --start-directory=./crates/redbx-python
 
 install_py: pre
-    maturin develop --manifest-path=./crates/redb-python/Cargo.toml
+    maturin develop --manifest-path=./crates/redbx-python/Cargo.toml
 
 test: pre
     RUST_BACKTRACE=1 cargo test --all-features
@@ -43,29 +43,29 @@ test_wasi:
     rustup install nightly-2025-07-26 --target wasm32-wasip1-threads
     # Uses cargo pkgid because "redb" is ambiguous with the test dependency on an old version of redb
     cargo +nightly-2025-07-26 test -p $(cargo pkgid) --target=wasm32-wasip1-threads -- --nocapture
-    cargo +nightly-2025-07-26 test -p redb-derive --target=wasm32-wasip1-threads -- --nocapture
+    cargo +nightly-2025-07-26 test -p redbx-derive --target=wasm32-wasip1-threads -- --nocapture
 
-bench bench='redb_benchmark': pre
-    cargo bench -p redb-bench --bench {{bench}}
+bench bench='encryption_overhead': pre
+    cargo bench -p redbx-bench --bench {{bench}}
 
 build_bench_container:
-    docker build -t redb-bench:latest -f Dockerfile.bench .
+    docker build -t redbx-bench:latest -f Dockerfile.bench .
 
 bench_containerized bench='lmdb_benchmark': build_bench_container
     # Exec the binary directly, because at low memory limits there may not be enough to invoke cargo & rustc
-    docker run --rm -it --memory=4g redb-bench:latest bash -c "cd /code/redb && ./target/release/deps/{{bench}}-*"
+    docker run --rm -it --memory=4g redbx-bench:latest bash -c "cd /code/redbx && ./target/release/deps/{{bench}}-*"
 
 watch +args='test':
     cargo watch --clear --exec "{{args}}"
 
 fuzz: pre
-    cargo fuzz run --sanitizer=none fuzz_redb -- -max_len=10000
+    cargo fuzz run --sanitizer=none fuzz_redbx -- -max_len=10000
 
 fuzz_cmin:
-    cargo fuzz cmin --sanitizer=none fuzz_redb -- -max_len=10000
+    cargo fuzz cmin --sanitizer=none fuzz_redbx -- -max_len=10000
 
 fuzz_ci: pre_all
-    cargo fuzz run --sanitizer=none fuzz_redb -- -max_len=10000 -max_total_time=60
+    cargo fuzz run --sanitizer=none fuzz_redbx -- -max_len=10000 -max_total_time=60
 
 fuzz_coverage: pre
     #!/usr/bin/env bash
@@ -74,11 +74,11 @@ fuzz_coverage: pre
     RUST_SYSROOT=`cargo rustc -- --print sysroot 2>/dev/null`
     LLVM_COV=`find $RUST_SYSROOT -name llvm-cov`
     echo $LLVM_COV
-    cargo fuzz coverage --sanitizer=none fuzz_redb
-    $LLVM_COV show target/*/coverage/*/release/fuzz_redb --format html \
-          -instr-profile=fuzz/coverage/fuzz_redb/coverage.profdata \
-          -ignore-filename-regex='.*(cargo/registry|redb/fuzz|rustc).*' > fuzz/coverage/coverage_report.html
-    $LLVM_COV report target/*/coverage/*/release/fuzz_redb \
-          -instr-profile=fuzz/coverage/fuzz_redb/coverage.profdata \
-          -ignore-filename-regex='.*(cargo/registry|redb/fuzz|rustc).*'
+    cargo fuzz coverage --sanitizer=none fuzz_redbx
+    $LLVM_COV show target/*/coverage/*/release/fuzz_redbx --format html \
+          -instr-profile=fuzz/coverage/fuzz_redbx/coverage.profdata \
+          -ignore-filename-regex='.*(cargo/registry|redbx/fuzz|rustc).*' > fuzz/coverage/coverage_report.html
+    $LLVM_COV report target/*/coverage/*/release/fuzz_redbx \
+          -instr-profile=fuzz/coverage/fuzz_redbx/coverage.profdata \
+          -ignore-filename-regex='.*(cargo/registry|redbx/fuzz|rustc).*'
     firefox ./fuzz/coverage/coverage_report.html
