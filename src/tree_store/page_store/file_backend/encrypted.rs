@@ -569,10 +569,13 @@ fn write_all_at(file: &File, mut buf: &[u8], mut offset: u64) -> io::Result<()> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(not(target_os = "wasi"))]
     use crate::encryption::{KeyManager, PageCipher};
+    #[cfg(not(target_os = "wasi"))]
     use tempfile::NamedTempFile;
 
     #[test]
+    #[cfg(not(target_os = "wasi"))]
     fn test_encrypted_backend_creation() {
         let temp_file = NamedTempFile::new().unwrap();
         let file = File::open(temp_file.path()).unwrap();
@@ -581,6 +584,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(target_os = "wasi"))]
     fn test_encrypted_backend_open() {
         let temp_file = NamedTempFile::new().unwrap();
         let file = File::open(temp_file.path()).unwrap();
@@ -591,10 +595,6 @@ mod tests {
 
     #[test]
     fn test_should_encrypt_page() {
-        let temp_file = NamedTempFile::new().unwrap();
-        let file = File::open(temp_file.path()).unwrap();
-        let _backend = EncryptedFileBackend::new(file, "test_password").unwrap();
-
         // LEAF page should be encrypted
         let leaf_data = [LEAF, 0, 1, 2, 3];
         assert!(should_encrypt_page(&leaf_data));
@@ -609,6 +609,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(target_os = "wasi"))]
     fn test_encrypt_decrypt_roundtrip() {
         // Test the encryption/decryption logic without file I/O
         let temp_file = NamedTempFile::new().unwrap();
@@ -643,10 +644,6 @@ mod tests {
     #[test]
     fn test_branch_page_no_encryption() {
         // Test that BRANCH pages are not encrypted
-        let temp_file = NamedTempFile::new().unwrap();
-        let file = File::create(temp_file.path()).unwrap();
-        let _backend = EncryptedFileBackend::new(file, "test_password").unwrap();
-
         // Test data for BRANCH page
         let original_data = [BRANCH, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
