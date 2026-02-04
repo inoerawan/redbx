@@ -1,12 +1,19 @@
 use redbx::{Database, ReadableDatabase, TableDefinition};
-use tempfile::NamedTempFile;
 
 const TEST_TABLE: TableDefinition<u32, &str> = TableDefinition::new("test");
+
+fn create_tempfile() -> tempfile::NamedTempFile {
+    if cfg!(target_os = "wasi") {
+        tempfile::NamedTempFile::new_in("/tmp").unwrap()
+    } else {
+        tempfile::NamedTempFile::new().unwrap()
+    }
+}
 
 #[test]
 fn test_windows_database_operations() {
     // Create a temporary file for testing
-    let temp_file = NamedTempFile::new().unwrap();
+    let temp_file = create_tempfile();
     let db_path = temp_file.path();
 
     // Test database creation

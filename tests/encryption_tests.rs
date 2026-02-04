@@ -1,13 +1,20 @@
 //! Comprehensive tests for redbx encryption functionality
 
 use redbx::{Database, DatabaseError, ReadableDatabase, ReadableTable, TableDefinition};
-use tempfile::NamedTempFile;
 
 const TABLE: TableDefinition<&str, u64> = TableDefinition::new("test_data");
 
+fn create_tempfile() -> tempfile::NamedTempFile {
+    if cfg!(target_os = "wasi") {
+        tempfile::NamedTempFile::new_in("/tmp").unwrap()
+    } else {
+        tempfile::NamedTempFile::new().unwrap()
+    }
+}
+
 #[test]
 fn test_encrypted_database_creation() {
-    let temp_file = NamedTempFile::new().unwrap();
+    let temp_file = create_tempfile();
     let password = "test_password_123";
 
     // Create encrypted database
@@ -38,7 +45,7 @@ fn test_encrypted_database_creation() {
 
 #[test]
 fn test_encrypted_database_reopen() {
-    let temp_file = NamedTempFile::new().unwrap();
+    let temp_file = create_tempfile();
     let password = "test_password_456";
 
     // Create and populate database
@@ -61,7 +68,7 @@ fn test_encrypted_database_reopen() {
 
 #[test]
 fn test_wrong_password_fails() {
-    let temp_file = NamedTempFile::new().unwrap();
+    let temp_file = create_tempfile();
     let correct_password = "correct_password";
     let wrong_password = "wrong_password";
 
@@ -89,7 +96,7 @@ fn test_wrong_password_fails() {
 
 #[test]
 fn test_multiple_tables_encryption() {
-    let temp_file = NamedTempFile::new().unwrap();
+    let temp_file = create_tempfile();
     let password = "multi_table_password";
 
     const TABLE1: TableDefinition<&str, u64> = TableDefinition::new("table1");
@@ -130,7 +137,7 @@ fn test_multiple_tables_encryption() {
 
 #[test]
 fn test_large_data_encryption() {
-    let temp_file = NamedTempFile::new().unwrap();
+    let temp_file = create_tempfile();
     let password = "large_data_password";
 
     const LARGE_TABLE: TableDefinition<&str, Vec<u8>> = TableDefinition::new("large_data");
@@ -161,7 +168,7 @@ fn test_large_data_encryption() {
 
 #[test]
 fn test_database_builder_with_encryption() {
-    let temp_file = NamedTempFile::new().unwrap();
+    let temp_file = create_tempfile();
     let password = "builder_test_password";
 
     // Test builder pattern with encryption
@@ -185,7 +192,7 @@ fn test_database_builder_with_encryption() {
 
 #[test]
 fn test_proactive_password_validation() {
-    let temp_file = NamedTempFile::new().unwrap();
+    let temp_file = create_tempfile();
     let correct_password = "correct_password_123";
     let wrong_password = "wrong_password_456";
 
@@ -222,7 +229,7 @@ fn test_proactive_password_validation() {
 
 #[test]
 fn test_read_only_password_validation() {
-    let temp_file = NamedTempFile::new().unwrap();
+    let temp_file = create_tempfile();
     let correct_password = "readonly_correct_password";
     let wrong_password = "readonly_wrong_password";
 
@@ -262,7 +269,7 @@ fn test_read_only_password_validation() {
 
 #[test]
 fn test_read_only_encrypted_database_comprehensive() {
-    let temp_file = NamedTempFile::new().unwrap();
+    let temp_file = create_tempfile();
     let password = "read_only_comprehensive_test";
 
     // Create and populate database
@@ -311,7 +318,7 @@ fn test_read_only_encrypted_database_comprehensive() {
 
 #[test]
 fn test_read_only_wrong_password_comprehensive() {
-    let temp_file = NamedTempFile::new().unwrap();
+    let temp_file = create_tempfile();
     let correct_password = "correct_readonly_password";
     let wrong_password = "wrong_readonly_password";
 
@@ -339,7 +346,7 @@ fn test_read_only_wrong_password_comprehensive() {
 
 #[test]
 fn test_read_only_empty_database() {
-    let temp_file = NamedTempFile::new().unwrap();
+    let temp_file = create_tempfile();
     let password = "empty_readonly_test";
 
     // Create empty database
