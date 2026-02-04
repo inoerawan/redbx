@@ -11,7 +11,7 @@ authors.workspace = true
 
 [dependencies]
 redbx = { path = "../.." }
-redb = "3.0.1"  # Original redb for comparison
+redb = "3.1.0"             # Original redb for comparison
 tempfile = "3.5.0"
 fastrand = "2.0.0"
 comfy-table = "7.0.1"

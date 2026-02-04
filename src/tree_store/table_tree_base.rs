@@ -491,6 +491,6 @@ impl Value for InternalTableDefinition {
     }
 
     fn type_name() -> TypeName {
-        TypeName::internal("redb::InternalTableDefinition")
+        TypeName::internal("redbx::InternalTableDefinition")
     }
 }

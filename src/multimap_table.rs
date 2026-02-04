@@ -573,7 +573,7 @@ impl<V: Key> Value for &DynamicCollection<V> {
     }
 
     fn type_name() -> TypeName {
-        TypeName::internal("redb::DynamicCollection")
+        TypeName::internal("redbx::DynamicCollection")
     }
 }
 

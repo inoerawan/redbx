@@ -64,7 +64,7 @@ impl Value for SavepointId {
     }
 
     fn type_name() -> TypeName {
-        TypeName::internal("redb::SavepointId")
+        TypeName::internal("redbx::SavepointId")
     }
 }
 

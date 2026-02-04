@@ -112,7 +112,7 @@ impl Value for PageList<'_> {
     }
 
     fn type_name() -> TypeName {
-        TypeName::internal("redb::PageList")
+        TypeName::internal("redbx::PageList")
     }
 }
 
@@ -173,7 +173,7 @@ impl Value for TransactionIdWithPagination {
     }
 
     fn type_name() -> TypeName {
-        TypeName::internal("redb::TransactionIdWithPagination")
+        TypeName::internal("redbx::TransactionIdWithPagination")
     }
 }
 
@@ -246,7 +246,7 @@ impl Value for AllocatorStateKey {
     }
 
     fn type_name() -> TypeName {
-        TypeName::internal("redb::AllocatorStateKey")
+        TypeName::internal("redbx::AllocatorStateKey")
     }
 }
 

@@ -190,6 +190,6 @@ impl Value for SerializedSavepoint<'_> {
     }
 
     fn type_name() -> TypeName {
-        TypeName::internal("redb::SerializedSavepoint")
+        TypeName::internal("redbx::SerializedSavepoint")
     }
 }
