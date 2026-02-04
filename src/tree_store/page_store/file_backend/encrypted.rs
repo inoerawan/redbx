@@ -86,10 +86,11 @@ impl EncryptedFileBackend {
 
         #[cfg(target_os = "wasi")]
         {
-            read_exact_at(&self.file, buf, offset)
+            read_exact_at(&self.file, buf, offset)?;
+            Ok(())
         }
 
-        #[cfg(target_family = "wasm")]
+        #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
         {
             let _ = (buf, offset);
             Err(io::Error::new(
@@ -119,10 +120,11 @@ impl EncryptedFileBackend {
 
         #[cfg(target_os = "wasi")]
         {
-            write_all_at(&self.file, buf, offset)
+            write_all_at(&self.file, buf, offset)?;
+            Ok(())
         }
 
-        #[cfg(target_family = "wasm")]
+        #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
         {
             let _ = (buf, offset);
             Err(io::Error::new(
