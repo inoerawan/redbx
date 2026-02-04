@@ -88,6 +88,15 @@ impl EncryptedFileBackend {
         {
             read_exact_at(&self.file, buf, offset)
         }
+
+        #[cfg(target_family = "wasm")]
+        {
+            let _ = (buf, offset);
+            Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "File I/O is not supported on wasm32-unknown-unknown target",
+            ))
+        }
     }
 
     fn write_all_at(&self, buf: &[u8], offset: u64) -> Result<(), io::Error> {
@@ -111,6 +120,15 @@ impl EncryptedFileBackend {
         #[cfg(target_os = "wasi")]
         {
             write_all_at(&self.file, buf, offset)
+        }
+
+        #[cfg(target_family = "wasm")]
+        {
+            let _ = (buf, offset);
+            Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "File I/O is not supported on wasm32-unknown-unknown target",
+            ))
         }
     }
 

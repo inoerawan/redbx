@@ -1077,12 +1077,14 @@ pub struct Builder {
 
 impl Builder {
     /// Read the salt from the unencrypted database header
+    #[cfg_attr(target_family = "wasm", allow(unused_variables))]
     fn read_salt_from_header(file: &File) -> Result<[u8; 16], DatabaseError> {
         // Read the database header (unencrypted) - header is always at the beginning
         // We need to read enough bytes to get the salt, which is at offset 32
         const SALT_OFFSET: usize = 32; // TRAILING_REGION_DATA_PAGES_OFFSET + size_of::<u32>()
         const HEADER_SIZE_FOR_SALT: usize = SALT_OFFSET + 16;
 
+        #[cfg_attr(target_family = "wasm", allow(unused_mut))]
         let mut header_buffer = [0u8; HEADER_SIZE_FOR_SALT];
 
         #[cfg(unix)]

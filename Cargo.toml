@@ -35,7 +35,7 @@ uuid = { version = "1.17.0", optional = true }
 aes-gcm = "0.10"
 pbkdf2 = "0.12"
 sha2 = "0.10"
-getrandom = "0.2.16"
+getrandom = { version = "0.2.16", features = ["js"] }
 zeroize = { version = "1.7", features = ["zeroize_derive"] }
 hmac = "0.12"
 
