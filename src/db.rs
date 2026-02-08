@@ -1107,8 +1107,8 @@ impl Builder {
                             return Err(DatabaseError::Storage(StorageError::Io(
                                 std::io::Error::new(
                                     std::io::ErrorKind::UnexpectedEof,
-                                    "Failed to read salt from database header: file too small"
-                                )
+                                    "Failed to read salt from database header: file too small",
+                                ),
                             )));
                         }
                         offset += bytes_read as u64;
