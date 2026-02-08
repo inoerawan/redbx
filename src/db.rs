@@ -1100,11 +1100,29 @@ impl Builder {
             let mut offset = 0u64;
             let mut data_offset = 0;
             while data_offset < header_buffer.len() {
-                let bytes_read = file
-                    .seek_read(&mut header_buffer[data_offset..], offset)
-                    .map_err(|e| DatabaseError::Storage(StorageError::Io(e)))?;
-                offset += bytes_read as u64;
-                data_offset += bytes_read;
+                match file.seek_read(&mut header_buffer[data_offset..], offset) {
+                    Ok(bytes_read) => {
+                        if bytes_read == 0 {
+                            // EOF reached before reading all required bytes
+                            return Err(DatabaseError::Storage(StorageError::Io(
+                                std::io::Error::new(
+                                    std::io::ErrorKind::UnexpectedEof,
+                                    "Failed to read salt from database header: file too small"
+                                )
+                            )));
+                        }
+                        offset += bytes_read as u64;
+                        data_offset += bytes_read;
+                    }
+                    Err(e) => {
+                        // On Windows, error code 33 (ERROR_LOCK_VIOLATION) means the file is locked
+                        // by another process. Convert this to DatabaseAlreadyOpen.
+                        if let Some(33) = e.raw_os_error() {
+                            return Err(DatabaseError::DatabaseAlreadyOpen);
+                        }
+                        return Err(DatabaseError::Storage(StorageError::Io(e)));
+                    }
+                }
             }
         }
 
@@ -1278,7 +1296,20 @@ impl Builder {
         path: impl AsRef<Path>,
         password: &str,
     ) -> Result<ReadOnlyDatabase, DatabaseError> {
-        let file = OpenOptions::new().read(true).open(path)?;
+        let file = match OpenOptions::new().read(true).open(path) {
+            Ok(f) => f,
+            Err(e) => {
+                // On Windows, error code 33 (ERROR_LOCK_VIOLATION) indicates the file is locked
+                // by another process (e.g., an open writable database)
+                #[cfg(windows)]
+                {
+                    if let Some(33) = e.raw_os_error() {
+                        return Err(DatabaseError::DatabaseAlreadyOpen);
+                    }
+                }
+                return Err(e.into());
+            }
+        };
 
         // Read the salt from the unencrypted database header
         let salt = Self::read_salt_from_header(&file)?;
