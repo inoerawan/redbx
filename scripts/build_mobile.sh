@@ -131,6 +131,25 @@ build_ios() {
 
     info "Using iOS SDK: $SDKROOT"
 
+    # On Linux, derive the xtool-bundled ld64.lld from $SDKROOT and inject linker
+    # config at build time so .cargo/config.toml stays portable across platforms.
+    # SDKROOT = <bundle>/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk
+    # Going up 6 dirs reaches the bundle root where toolset/bin/ld64.lld lives.
+    IOS_CARGO_CONFIG=()
+    if ! $ON_MACOS; then
+        XTOOL_BUNDLE="$HOME/.swiftpm/swift-sdks/darwin.artifactbundle"
+        XTOOL_LD64="$XTOOL_BUNDLE/toolset/bin/ld64.lld"
+        [[ -x "$XTOOL_LD64" ]] \
+            || die "Could not find ld64.lld in xtool bundle at '$XTOOL_LD64' — is the SDK fully installed?"
+        info "Using linker: $XTOOL_LD64"
+        IOS_CARGO_CONFIG=(
+            --config "target.aarch64-apple-ios.linker=\"$XTOOL_LD64\""
+            --config "target.aarch64-apple-ios.rustflags=['-C','linker-flavor=ld64.lld']"
+            --config "target.aarch64-apple-ios-sim.linker=\"$XTOOL_LD64\""
+            --config "target.aarch64-apple-ios-sim.rustflags=['-C','linker-flavor=ld64.lld']"
+        )
+    fi
+
     IOS_OUT="crates/redbx-mobile/ios"
     IOS_LIB="$IOS_OUT/lib"
     SWIFT_OUT="$IOS_OUT/swift"
@@ -138,10 +157,18 @@ build_ios() {
     mkdir -p "$IOS_LIB" "$SWIFT_OUT"
 
     info "Compiling for aarch64-apple-ios (device)..."
-    SDKROOT="$SDKROOT" cargo build -p redbx-mobile --release --target aarch64-apple-ios
+    SDKROOT="$SDKROOT" cargo build -p redbx-mobile --release --target aarch64-apple-ios \
+        "${IOS_CARGO_CONFIG[@]}"
 
     info "Compiling for aarch64-apple-ios-sim (simulator)..."
-    SDKROOT="$SDKROOT" cargo build -p redbx-mobile --release --target aarch64-apple-ios-sim
+    SDKROOT_SIM="${SDKROOT_SIM:-$(dirname "$SDKROOT")/../../../iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk}"
+    SDKROOT_SIM="$(cd "$SDKROOT_SIM" 2>/dev/null && pwd || echo "$SDKROOT_SIM")"
+    if [[ ! -d "$SDKROOT_SIM" ]]; then
+        die "Could not find iPhoneSimulator.sdk — set SDKROOT_SIM explicitly"
+    fi
+    info "Using iOS Simulator SDK: $SDKROOT_SIM"
+    SDKROOT="$SDKROOT_SIM" cargo build -p redbx-mobile --release --target aarch64-apple-ios-sim \
+        "${IOS_CARGO_CONFIG[@]}"
 
     cp target/aarch64-apple-ios/release/libredbx_mobile.a \
         "$IOS_LIB/libredbx_mobile-device.a"
@@ -162,10 +189,52 @@ build_ios() {
             -library "$IOS_LIB/libredbx_mobile-sim.a" \
             -output "$XCF_OUT"
     else
-        xtool project create-xcframework \
-            --library "$IOS_LIB/libredbx_mobile-device.a" \
-            --library "$IOS_LIB/libredbx_mobile-sim.a" \
-            --output "$XCF_OUT"
+        # On Linux, xcodebuild is unavailable and xtool does not support xcframework
+        # creation. Build the directory structure manually — an XCFramework is just
+        # a versioned directory tree + Info.plist understood by Xcode / SPM.
+        DEVICE_DIR="$XCF_OUT/ios-arm64"
+        SIM_DIR="$XCF_OUT/ios-arm64-simulator"
+        mkdir -p "$DEVICE_DIR" "$SIM_DIR"
+        cp "$IOS_LIB/libredbx_mobile-device.a" "$DEVICE_DIR/libredbx_mobile.a"
+        cp "$IOS_LIB/libredbx_mobile-sim.a"    "$SIM_DIR/libredbx_mobile.a"
+
+        cat > "$XCF_OUT/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>AvailableLibraries</key>
+    <array>
+        <dict>
+            <key>LibraryIdentifier</key>
+            <string>ios-arm64</string>
+            <key>LibraryPath</key>
+            <string>libredbx_mobile.a</string>
+            <key>SupportedArchitectures</key>
+            <array><string>arm64</string></array>
+            <key>SupportedPlatform</key>
+            <string>ios</string>
+        </dict>
+        <dict>
+            <key>LibraryIdentifier</key>
+            <string>ios-arm64-simulator</string>
+            <key>LibraryPath</key>
+            <string>libredbx_mobile.a</string>
+            <key>SupportedArchitectures</key>
+            <array><string>arm64</string></array>
+            <key>SupportedPlatform</key>
+            <string>ios</string>
+            <key>SupportedPlatformVariant</key>
+            <string>simulator</string>
+        </dict>
+    </array>
+    <key>CFBundlePackageType</key>
+    <string>XFWK</string>
+    <key>XCFrameworkFormatVersion</key>
+    <string>1.0</string>
+</dict>
+</plist>
+PLIST
     fi
 
     success "iOS build complete"
