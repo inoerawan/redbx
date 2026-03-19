@@ -99,33 +99,60 @@ check_rust_target "x86_64-linux-android"     "x86_64 emulator"
 check_rust_target "i686-linux-android"       "x86 emulator"
 
 # ── iOS ───────────────────────────────────────────────────────────────────────
-section "iOS (Linux via xtool + Swift)"
+if [[ "$(uname)" == "Darwin" ]]; then
+    section "iOS (macOS / Xcode)"
 
-check_cmd "swift"  "Install Swift for Linux: https://www.swift.org/download"
-check_cmd "xtool"  "Install xtool: https://github.com/nicholaslightle/xtool — see README"
+    check_cmd "xcodebuild" "Install Xcode from the App Store: https://apps.apple.com/app/xcode/id497799835"
 
-check_rust_target "aarch64-apple-ios"      "physical iOS devices"
-check_rust_target "aarch64-apple-ios-sim"  "iOS simulator (Apple Silicon)"
+    check_rust_target "aarch64-apple-ios"      "physical iOS devices"
+    check_rust_target "aarch64-apple-ios-sim"  "iOS simulator (Apple Silicon)"
 
-# iOS SDK (SDKROOT) — Apple does not ship the iOS SDK for Linux.
-# Options:
-#   A) macOS machine with Xcode: SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path)
-#   B) Extract from Xcode.xip on macOS, install via: xtool sdk install /path/to/Xcode.xip
-#      Then set SDKROOT=~/.local/share/swiftly/... (path printed by xtool after install)
-#   C) Use GitHub Actions macos-latest runner for production iOS builds
-#   D) Linux-only: cargo check (type-check) works without SDKROOT; full link requires it
-if [[ -n "${SDKROOT:-}" ]]; then
-    if [[ -d "${SDKROOT}" ]]; then
-        ok "\$SDKROOT = $SDKROOT"
+    # Auto-detect SDKROOT on macOS via xcrun; respect a user-set value if present.
+    if [[ -n "${SDKROOT:-}" ]]; then
+        if [[ -d "${SDKROOT}" ]]; then
+            ok "\$SDKROOT = $SDKROOT"
+        else
+            fail "\$SDKROOT (directory does not exist)" \
+                 "Set SDKROOT to a valid iPhoneOS.sdk path, or unset it to let xcrun auto-detect"
+        fi
+    elif command -v xcrun &>/dev/null; then
+        SDKROOT_AUTO=$(xcrun --sdk iphoneos --show-sdk-path 2>/dev/null || true)
+        if [[ -n "$SDKROOT_AUTO" ]] && [[ -d "$SDKROOT_AUTO" ]]; then
+            ok "\$SDKROOT (auto-detected via xcrun): $SDKROOT_AUTO"
+        else
+            fail "\$SDKROOT" \
+                 "Install Xcode + iOS SDK; then: export SDKROOT=\$(xcrun --sdk iphoneos --show-sdk-path)"
+        fi
     else
-        fail "\$SDKROOT (directory does not exist)" \
-             "Set SDKROOT to a valid iPhoneOS.sdk path (see notes above)"
+        fail "xcrun / Xcode" "Install Xcode from the App Store: https://apps.apple.com/app/xcode/id497799835"
     fi
 else
-    # Non-fatal: warn but don't count as missing — cargo check still works
-    printf "  ${YELLOW}⚠️ ${NC} \$SDKROOT not set — cargo check works, but full link/bindgen requires iOS SDK\n"
-    printf "     ${YELLOW}Hint:${NC} On macOS: export SDKROOT=\$(xcrun --sdk iphoneos --show-sdk-path)\n"
-    printf "           On Linux: install Xcode SDK via xtool sdk install /path/to/Xcode.xip\n"
+    section "iOS (Linux via xtool + Swift)"
+
+    check_cmd "swift"  "Install Swift for Linux: https://www.swift.org/download"
+    check_cmd "xtool"  "Install xtool: https://github.com/nicholaslightle/xtool — see README"
+
+    check_rust_target "aarch64-apple-ios"      "physical iOS devices"
+    check_rust_target "aarch64-apple-ios-sim"  "iOS simulator (Apple Silicon)"
+
+    # iOS SDK (SDKROOT) — Apple does not ship the iOS SDK for Linux.
+    # Options:
+    #   A) Extract from Xcode.xip on macOS, install via: xtool sdk install /path/to/Xcode.xip
+    #      Then set SDKROOT to the path printed by xtool after install.
+    #   B) Use GitHub Actions macos-latest runner for production iOS builds.
+    #   C) cargo check (type-check) works without SDKROOT; full link requires it.
+    if [[ -n "${SDKROOT:-}" ]]; then
+        if [[ -d "${SDKROOT}" ]]; then
+            ok "\$SDKROOT = $SDKROOT"
+        else
+            fail "\$SDKROOT (directory does not exist)" \
+                 "Set SDKROOT to a valid iPhoneOS.sdk path (see notes above)"
+        fi
+    else
+        # Non-fatal on Linux: cargo check still works without SDKROOT
+        printf "  ${YELLOW}⚠️ ${NC} \$SDKROOT not set — cargo check works, but full link/bindgen requires iOS SDK\n"
+        printf "     ${YELLOW}Hint:${NC} install Xcode SDK via xtool sdk install /path/to/Xcode.xip\n"
+    fi
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────

@@ -82,31 +82,47 @@ build_android() {
 build_ios() {
     info "Building iOS libraries..."
 
-    command -v swift &>/dev/null \
-        || die "swift not found — install Swift for Linux: https://www.swift.org/download"
-    command -v xtool &>/dev/null \
-        || die "xtool not found — see: https://github.com/nicholaslightle/xtool"
+    ON_MACOS=false
+    [[ "$(uname)" == "Darwin" ]] && ON_MACOS=true
 
-    # iOS SDK check — Apple only ships the iOS SDK inside Xcode (macOS).
-    # On Linux you must set SDKROOT to an extracted iPhoneOS.sdk path.
-    # Without it, Rust's linker calls xcrun (macOS-only) and fails.
-    if [[ -z "${SDKROOT:-}" ]]; then
-        warn "SDKROOT is not set."
-        warn "The iOS SDK (iPhoneOS.sdk) is required for a full iOS build."
-        warn ""
-        warn "Options:"
-        warn "  macOS: export SDKROOT=\$(xcrun --sdk iphoneos --show-sdk-path)"
-        warn "  Linux: xtool sdk install /path/to/Xcode.xip   # extracts the SDK"
-        warn "         then set SDKROOT to the installed sdk path"
-        warn ""
-        warn "Falling back to cargo check (type-check only — no .a produced)."
-        echo
-        info "Type-checking for aarch64-apple-ios..."
-        cargo check -p redbx-mobile --target aarch64-apple-ios
-        info "Type-checking for aarch64-apple-ios-sim..."
-        cargo check -p redbx-mobile --target aarch64-apple-ios-sim
-        success "iOS type-check passed (no SDKROOT — skipped link + bindgen)"
-        return 0
+    # ── Platform-specific pre-flight ──────────────────────────────────────────
+    if $ON_MACOS; then
+        command -v xcodebuild &>/dev/null \
+            || die "xcodebuild not found — install Xcode from the App Store"
+
+        # Auto-detect SDKROOT from Xcode if not already set
+        if [[ -z "${SDKROOT:-}" ]]; then
+            SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path 2>/dev/null || true)
+            [[ -n "$SDKROOT" ]] \
+                || die "Could not detect iOS SDK — make sure Xcode and the iOS platform are installed"
+            info "Auto-detected iOS SDK: $SDKROOT"
+        fi
+    else
+        # Linux: requires swift + xtool with a manually installed iOS SDK
+        command -v swift &>/dev/null \
+            || die "swift not found — install Swift for Linux: https://www.swift.org/download"
+        command -v xtool &>/dev/null \
+            || die "xtool not found — see: https://github.com/nicholaslightle/xtool"
+
+        # iOS SDK check — Apple does not ship the iOS SDK for Linux.
+        # Install via: xtool sdk install /path/to/Xcode.xip
+        # then set SDKROOT to the printed sdk path.
+        if [[ -z "${SDKROOT:-}" ]]; then
+            warn "SDKROOT is not set."
+            warn "The iOS SDK (iPhoneOS.sdk) is required for a full iOS build."
+            warn ""
+            warn "  xtool sdk install /path/to/Xcode.xip   # extracts the SDK"
+            warn "  then: export SDKROOT=<path printed by xtool>"
+            warn ""
+            warn "Falling back to cargo check (type-check only — no .a produced)."
+            echo
+            info "Type-checking for aarch64-apple-ios..."
+            cargo check -p redbx-mobile --target aarch64-apple-ios
+            info "Type-checking for aarch64-apple-ios-sim..."
+            cargo check -p redbx-mobile --target aarch64-apple-ios-sim
+            success "iOS type-check passed (no SDKROOT — skipped link + bindgen)"
+            return 0
+        fi
     fi
 
     if [[ ! -d "$SDKROOT" ]]; then
@@ -140,10 +156,17 @@ build_ios() {
 
     info "Creating XCFramework..."
     rm -rf "$XCF_OUT"
-    xtool project create-xcframework \
-        --library "$IOS_LIB/libredbx_mobile-device.a" \
-        --library "$IOS_LIB/libredbx_mobile-sim.a" \
-        --output "$XCF_OUT"
+    if $ON_MACOS; then
+        xcodebuild -create-xcframework \
+            -library "$IOS_LIB/libredbx_mobile-device.a" \
+            -library "$IOS_LIB/libredbx_mobile-sim.a" \
+            -output "$XCF_OUT"
+    else
+        xtool project create-xcframework \
+            --library "$IOS_LIB/libredbx_mobile-device.a" \
+            --library "$IOS_LIB/libredbx_mobile-sim.a" \
+            --output "$XCF_OUT"
+    fi
 
     success "iOS build complete"
     info "  Static libs : $IOS_LIB/"
