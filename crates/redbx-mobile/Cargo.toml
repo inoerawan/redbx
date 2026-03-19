@@ -1,0 +1,24 @@
+[package]
+name = "redbx-mobile"
+description = "Mobile FFI bindings for redbx (Android/iOS via UniFFI)"
+publish = false
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lib]
+name = "redbx_mobile"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[build-dependencies]
+
+[dependencies]
+redbx = { path = "../.." }
+uniffi = "0.29"
+
+[dev-dependencies]
+tempfile = "3.5.0"

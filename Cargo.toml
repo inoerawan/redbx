@@ -16,7 +16,9 @@ members = [
     ".",
     "crates/redbx-bench",
     "crates/redbx-derive",
+    "crates/redbx-mobile",
     "crates/redbx-python",
+    "crates/uniffi-bindgen",
 ]
 default-members = [".", "crates/redbx-derive", "crates/redbx-python"]
 

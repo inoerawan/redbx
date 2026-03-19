@@ -82,3 +82,27 @@ fuzz_coverage: pre
           -instr-profile=fuzz/coverage/fuzz_redbx/coverage.profdata \
           -ignore-filename-regex='.*(cargo/registry|redbx/fuzz|rustc).*'
     firefox ./fuzz/coverage/coverage_report.html
+
+# ── Mobile (Android + iOS) ────────────────────────────────────────────────────
+
+# Verify all mobile build toolchain dependencies are present
+check_deps:
+    bash scripts/check_mobile_deps.sh
+
+# Run redbx-mobile Rust unit tests (no emulator required)
+test_mobile:
+    RUST_BACKTRACE=1 cargo test -p redbx-mobile
+
+# Build Android .so libraries and generate Kotlin UniFFI bindings
+# Requires: cargo-ndk, Android NDK (ANDROID_NDK_HOME or NDK_HOME)
+build_android: check_deps
+    bash scripts/build_mobile.sh android
+
+# Build iOS XCFramework and generate Swift UniFFI bindings
+# Requires: xtool, swift (Linux cross-compilation)
+build_ios: check_deps
+    bash scripts/build_mobile.sh ios
+
+# Build both Android and iOS
+build_mobile: check_deps
+    bash scripts/build_mobile.sh all
