@@ -60,6 +60,20 @@ exceptions = [
     # list
     { allow = ["Unicode-3.0"], name = "unicode-ident", version = "*" }, # Used only by comfy-table in the benchmarks
 #    { allow = ["ISC"], name = "libloading", version = "*" }, # Used only by rocksdb in the benchmarks
+
+    # UniFFI (MPL-2.0) — used only by the mobile FFI crates (redbx-mobile,
+    # uniffi-bindgen), which are `publish = false` and are not part of the
+    # published `redbx` library. MPL-2.0 is a per-file copyleft: it obliges us to
+    # publish modifications to UniFFI's own source files, which we do not make.
+    # Linking it into the Android .so does not place redbx under MPL-2.0.
+    { allow = ["MPL-2.0"], name = "uniffi", version = "*" },
+    { allow = ["MPL-2.0"], name = "uniffi_bindgen", version = "*" },
+    { allow = ["MPL-2.0"], name = "uniffi_core", version = "*" },
+    { allow = ["MPL-2.0"], name = "uniffi_internal_macros", version = "*" },
+    { allow = ["MPL-2.0"], name = "uniffi_macros", version = "*" },
+    { allow = ["MPL-2.0"], name = "uniffi_meta", version = "*" },
+    { allow = ["MPL-2.0"], name = "uniffi_pipeline", version = "*" },
+    { allow = ["MPL-2.0"], name = "uniffi_udl", version = "*" },
 ]
 
 # Some crates don't have (easily) machine readable licensing information,

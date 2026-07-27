@@ -1,6 +1,6 @@
 [package]
 name = "redbx-mobile"
-description = "Mobile FFI bindings for redbx (Android/iOS via UniFFI)"
+description = "Mobile FFI bindings for redbx (Android via UniFFI; iOS to follow)"
 publish = false
 version = "0.1.0"
 edition.workspace = true
@@ -13,8 +13,6 @@ authors.workspace = true
 [lib]
 name = "redbx_mobile"
 crate-type = ["cdylib", "staticlib", "rlib"]
-
-[build-dependencies]
 
 [dependencies]
 redbx = { path = "../.." }

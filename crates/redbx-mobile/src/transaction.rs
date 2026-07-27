@@ -21,17 +21,16 @@ pub struct RedbxWriteTransaction {
 
 impl RedbxWriteTransaction {
     pub(crate) fn new(txn: WriteTransaction) -> Self {
-        Self { inner: Mutex::new(Some(txn)) }
+        Self {
+            inner: Mutex::new(Some(txn)),
+        }
     }
 }
 
 #[uniffi::export]
 impl RedbxWriteTransaction {
     /// Open a typed table by name. Creates it if it does not yet exist.
-    pub fn open_table(
-        self: Arc<Self>,
-        name: String,
-    ) -> Result<Arc<RedbxTable>, RedbxError> {
+    pub fn open_table(self: Arc<Self>, name: String) -> Result<Arc<RedbxTable>, RedbxError> {
         // Validate that the transaction is still alive before constructing the handle.
         {
             let guard = self.inner.lock().unwrap();
@@ -66,7 +65,7 @@ impl RedbxWriteTransaction {
             .take()
             .ok_or(RedbxError::TransactionConsumed)?;
         txn.commit().map_err(|e| RedbxError::UnknownError {
-            message: e.to_string(),
+            detail: e.to_string(),
         })
     }
 
@@ -87,7 +86,9 @@ pub struct RedbxReadTransaction {
 
 impl RedbxReadTransaction {
     pub(crate) fn new(txn: ReadTransaction) -> Self {
-        Self { inner: Mutex::new(txn) }
+        Self {
+            inner: Mutex::new(txn),
+        }
     }
 }
 

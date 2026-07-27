@@ -3,7 +3,9 @@ use std::sync::Arc;
 use redbx::{ReadableTable, ReadableTableMetadata, TableDefinition};
 
 use crate::transaction::{RedbxReadTransaction, RedbxWriteTransaction};
-use crate::types::{bytes_to_value, value_to_bytes, RedbxError, RedbxKeyValue, RedbxValue};
+use crate::types::{
+    RedbxError, RedbxKeyValue, RedbxValue, decode_stored, encode_range, value_to_bytes,
+};
 
 // ── Write table ───────────────────────────────────────────────────────────────
 
@@ -49,11 +51,10 @@ impl RedbxTable {
         let guard = self.txn.inner.lock().unwrap();
         let txn = guard.as_ref().ok_or(RedbxError::TransactionConsumed)?;
         let table = txn.open_table(self.def()).map_err(RedbxError::from)?;
-        let result = table
-            .get(key_bytes.as_slice())
-            .map_err(RedbxError::from)?
-            .and_then(|guard| bytes_to_value(guard.value()));
-        Ok(result)
+        match table.get(key_bytes.as_slice()).map_err(RedbxError::from)? {
+            Some(v) => Ok(Some(decode_stored(v.value(), "value")?)),
+            None => Ok(None),
+        }
     }
 
     /// Remove the entry for `key`, returning the previous value if present.
@@ -62,21 +63,28 @@ impl RedbxTable {
         let guard = self.txn.inner.lock().unwrap();
         let txn = guard.as_ref().ok_or(RedbxError::TransactionConsumed)?;
         let mut table = txn.open_table(self.def()).map_err(RedbxError::from)?;
-        let result = table
+        match table
             .remove(key_bytes.as_slice())
             .map_err(RedbxError::from)?
-            .and_then(|guard| bytes_to_value(guard.value()));
-        Ok(result)
+        {
+            Some(v) => Ok(Some(decode_stored(v.value(), "value")?)),
+            None => Ok(None),
+        }
     }
 
     /// Return all entries whose keys fall in `[start, end]` (inclusive).
+    ///
+    /// Both endpoints must be the same [`RedbxValue`] variant; otherwise
+    /// [`RedbxError::InvalidRange`] is returned.
+    ///
+    /// The whole result set is materialised in memory — bound the range on
+    /// large tables.
     pub fn range(
         &self,
         start: RedbxValue,
         end: RedbxValue,
     ) -> Result<Vec<RedbxKeyValue>, RedbxError> {
-        let start_bytes = value_to_bytes(&start);
-        let end_bytes = value_to_bytes(&end);
+        let (start_bytes, end_bytes) = encode_range(&start, &end)?;
         let guard = self.txn.inner.lock().unwrap();
         let txn = guard.as_ref().ok_or(RedbxError::TransactionConsumed)?;
         let table = txn.open_table(self.def()).map_err(RedbxError::from)?;
@@ -86,11 +94,10 @@ impl RedbxTable {
             .map_err(RedbxError::from)?
         {
             let (k, v) = entry.map_err(RedbxError::from)?;
-            if let (Some(key), Some(value)) =
-                (bytes_to_value(k.value()), bytes_to_value(v.value()))
-            {
-                out.push(RedbxKeyValue { key, value });
-            }
+            out.push(RedbxKeyValue {
+                key: decode_stored(k.value(), "key")?,
+                value: decode_stored(v.value(), "value")?,
+            });
         }
         Ok(out)
     }
@@ -135,21 +142,25 @@ impl RedbxReadOnlyTable {
         let key_bytes = value_to_bytes(&key);
         let guard = self.txn.inner.lock().unwrap();
         let table = guard.open_table(self.def()).map_err(RedbxError::from)?;
-        let result = table
-            .get(key_bytes.as_slice())
-            .map_err(RedbxError::from)?
-            .and_then(|guard| bytes_to_value(guard.value()));
-        Ok(result)
+        match table.get(key_bytes.as_slice()).map_err(RedbxError::from)? {
+            Some(v) => Ok(Some(decode_stored(v.value(), "value")?)),
+            None => Ok(None),
+        }
     }
 
     /// Return all entries whose keys fall in `[start, end]` (inclusive).
+    ///
+    /// Both endpoints must be the same [`RedbxValue`] variant; otherwise
+    /// [`RedbxError::InvalidRange`] is returned.
+    ///
+    /// The whole result set is materialised in memory — bound the range on
+    /// large tables.
     pub fn range(
         &self,
         start: RedbxValue,
         end: RedbxValue,
     ) -> Result<Vec<RedbxKeyValue>, RedbxError> {
-        let start_bytes = value_to_bytes(&start);
-        let end_bytes = value_to_bytes(&end);
+        let (start_bytes, end_bytes) = encode_range(&start, &end)?;
         let guard = self.txn.inner.lock().unwrap();
         let table = guard.open_table(self.def()).map_err(RedbxError::from)?;
         let mut out = Vec::new();
@@ -158,11 +169,10 @@ impl RedbxReadOnlyTable {
             .map_err(RedbxError::from)?
         {
             let (k, v) = entry.map_err(RedbxError::from)?;
-            if let (Some(key), Some(value)) =
-                (bytes_to_value(k.value()), bytes_to_value(v.value()))
-            {
-                out.push(RedbxKeyValue { key, value });
-            }
+            out.push(RedbxKeyValue {
+                key: decode_stored(k.value(), "key")?,
+                value: decode_stored(v.value(), "value")?,
+            });
         }
         Ok(out)
     }

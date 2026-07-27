@@ -3,7 +3,9 @@ use std::sync::Arc;
 use redbx::{MultimapTableDefinition, ReadableMultimapTable};
 
 use crate::transaction::{RedbxReadTransaction, RedbxWriteTransaction};
-use crate::types::{bytes_to_value, value_to_bytes, RedbxError, RedbxKeyValue, RedbxValue};
+use crate::types::{
+    RedbxError, RedbxKeyValue, RedbxValue, decode_stored, encode_range, value_to_bytes,
+};
 
 // ── Write multimap table ──────────────────────────────────────────────────────
 
@@ -32,7 +34,9 @@ impl RedbxMultimapTable {
         let val_bytes = value_to_bytes(&value);
         let guard = self.txn.inner.lock().unwrap();
         let txn = guard.as_ref().ok_or(RedbxError::TransactionConsumed)?;
-        let mut table = txn.open_multimap_table(self.def()).map_err(RedbxError::from)?;
+        let mut table = txn
+            .open_multimap_table(self.def())
+            .map_err(RedbxError::from)?;
         table
             .insert(key_bytes.as_slice(), val_bytes.as_slice())
             .map_err(RedbxError::from)?;
@@ -44,13 +48,13 @@ impl RedbxMultimapTable {
         let key_bytes = value_to_bytes(&key);
         let guard = self.txn.inner.lock().unwrap();
         let txn = guard.as_ref().ok_or(RedbxError::TransactionConsumed)?;
-        let table = txn.open_multimap_table(self.def()).map_err(RedbxError::from)?;
+        let table = txn
+            .open_multimap_table(self.def())
+            .map_err(RedbxError::from)?;
         let mut out = Vec::new();
         for entry in table.get(key_bytes.as_slice()).map_err(RedbxError::from)? {
             let entry = entry.map_err(RedbxError::from)?;
-            if let Some(v) = bytes_to_value(entry.value()) {
-                out.push(v);
-            }
+            out.push(decode_stored(entry.value(), "value")?);
         }
         Ok(out)
     }
@@ -61,7 +65,9 @@ impl RedbxMultimapTable {
         let val_bytes = value_to_bytes(&value);
         let guard = self.txn.inner.lock().unwrap();
         let txn = guard.as_ref().ok_or(RedbxError::TransactionConsumed)?;
-        let mut table = txn.open_multimap_table(self.def()).map_err(RedbxError::from)?;
+        let mut table = txn
+            .open_multimap_table(self.def())
+            .map_err(RedbxError::from)?;
         table
             .remove(key_bytes.as_slice(), val_bytes.as_slice())
             .map_err(RedbxError::from)
@@ -72,7 +78,9 @@ impl RedbxMultimapTable {
         let key_bytes = value_to_bytes(&key);
         let guard = self.txn.inner.lock().unwrap();
         let txn = guard.as_ref().ok_or(RedbxError::TransactionConsumed)?;
-        let mut table = txn.open_multimap_table(self.def()).map_err(RedbxError::from)?;
+        let mut table = txn
+            .open_multimap_table(self.def())
+            .map_err(RedbxError::from)?;
         let mut count = 0u64;
         let values: Vec<Vec<u8>> = table
             .get(key_bytes.as_slice())
@@ -93,29 +101,36 @@ impl RedbxMultimapTable {
 
     /// Return all entries whose keys fall in `[start, end]` (inclusive).
     /// Each key appears once per value it holds.
+    ///
+    /// Both endpoints must be the same [`RedbxValue`] variant; otherwise
+    /// [`RedbxError::InvalidRange`] is returned.
+    ///
+    /// The whole result set is materialised in memory — bound the range on
+    /// large tables.
     pub fn range(
         &self,
         start: RedbxValue,
         end: RedbxValue,
     ) -> Result<Vec<RedbxKeyValue>, RedbxError> {
-        let start_bytes = value_to_bytes(&start);
-        let end_bytes = value_to_bytes(&end);
+        let (start_bytes, end_bytes) = encode_range(&start, &end)?;
         let guard = self.txn.inner.lock().unwrap();
         let txn = guard.as_ref().ok_or(RedbxError::TransactionConsumed)?;
-        let table = txn.open_multimap_table(self.def()).map_err(RedbxError::from)?;
+        let table = txn
+            .open_multimap_table(self.def())
+            .map_err(RedbxError::from)?;
         let mut out = Vec::new();
         for entry in table
             .range(start_bytes.as_slice()..=end_bytes.as_slice())
             .map_err(RedbxError::from)?
         {
             let (k, values) = entry.map_err(RedbxError::from)?;
-            if let Some(key) = bytes_to_value(k.value()) {
-                for v in values {
-                    let v = v.map_err(RedbxError::from)?;
-                    if let Some(value) = bytes_to_value(v.value()) {
-                        out.push(RedbxKeyValue { key: key.clone(), value });
-                    }
-                }
+            let key = decode_stored(k.value(), "key")?;
+            for v in values {
+                let v = v.map_err(RedbxError::from)?;
+                out.push(RedbxKeyValue {
+                    key: key.clone(),
+                    value: decode_stored(v.value(), "value")?,
+                });
             }
         }
         Ok(out)
@@ -147,40 +162,47 @@ impl RedbxReadOnlyMultimapTable {
     pub fn get(&self, key: RedbxValue) -> Result<Vec<RedbxValue>, RedbxError> {
         let key_bytes = value_to_bytes(&key);
         let guard = self.txn.inner.lock().unwrap();
-        let table = guard.open_multimap_table(self.def()).map_err(RedbxError::from)?;
+        let table = guard
+            .open_multimap_table(self.def())
+            .map_err(RedbxError::from)?;
         let mut out = Vec::new();
         for entry in table.get(key_bytes.as_slice()).map_err(RedbxError::from)? {
             let entry = entry.map_err(RedbxError::from)?;
-            if let Some(v) = bytes_to_value(entry.value()) {
-                out.push(v);
-            }
+            out.push(decode_stored(entry.value(), "value")?);
         }
         Ok(out)
     }
 
     /// Return all entries whose keys fall in `[start, end]` (inclusive).
+    ///
+    /// Both endpoints must be the same [`RedbxValue`] variant; otherwise
+    /// [`RedbxError::InvalidRange`] is returned.
+    ///
+    /// The whole result set is materialised in memory — bound the range on
+    /// large tables.
     pub fn range(
         &self,
         start: RedbxValue,
         end: RedbxValue,
     ) -> Result<Vec<RedbxKeyValue>, RedbxError> {
-        let start_bytes = value_to_bytes(&start);
-        let end_bytes = value_to_bytes(&end);
+        let (start_bytes, end_bytes) = encode_range(&start, &end)?;
         let guard = self.txn.inner.lock().unwrap();
-        let table = guard.open_multimap_table(self.def()).map_err(RedbxError::from)?;
+        let table = guard
+            .open_multimap_table(self.def())
+            .map_err(RedbxError::from)?;
         let mut out = Vec::new();
         for entry in table
             .range(start_bytes.as_slice()..=end_bytes.as_slice())
             .map_err(RedbxError::from)?
         {
             let (k, values) = entry.map_err(RedbxError::from)?;
-            if let Some(key) = bytes_to_value(k.value()) {
-                for v in values {
-                    let v = v.map_err(RedbxError::from)?;
-                    if let Some(value) = bytes_to_value(v.value()) {
-                        out.push(RedbxKeyValue { key: key.clone(), value });
-                    }
-                }
+            let key = decode_stored(k.value(), "key")?;
+            for v in values {
+                let v = v.map_err(RedbxError::from)?;
+                out.push(RedbxKeyValue {
+                    key: key.clone(),
+                    value: decode_stored(v.value(), "value")?,
+                });
             }
         }
         Ok(out)
