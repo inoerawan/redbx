@@ -1,0 +1,12 @@
+# UniFFI binding generation settings for redbx-mobile.
+#
+# Passed explicitly via `--config` in scripts/build_mobile.sh, because in
+# `--library` mode UniFFI does not reliably auto-discover a crate's uniffi.toml.
+
+[bindings.kotlin]
+# Same package as the hand-written wrapper. A separate sub-package would need a
+# `typealias` to re-export `RedbxValue`, and Kotlin typealiases cannot reach
+# nested classifiers — `RedbxValue.Str` would not resolve for callers. Generated
+# and hand-written sources stay separated by directory instead
+# (src/generated/kotlin vs src/main/kotlin).
+package_name = "id.inoerawan.redbx"

@@ -83,26 +83,31 @@ fuzz_coverage: pre
           -ignore-filename-regex='.*(cargo/registry|redbx/fuzz|rustc).*'
     firefox ./fuzz/coverage/coverage_report.html
 
-# ── Mobile (Android + iOS) ────────────────────────────────────────────────────
+# ── Mobile (Android) ──────────────────────────────────────────────────────────
+#
+# iOS was removed pending a macOS build host — see android/README.md.
 
-# Verify all mobile build toolchain dependencies are present
+# Verify the Android build toolchain is present
 check_deps:
-    bash scripts/check_mobile_deps.sh
+    bash scripts/check_mobile_deps.sh android
 
-# Run redbx-mobile Rust unit tests (no emulator required)
+# Run redbx-mobile Rust unit tests on the host (no emulator required)
 test_mobile:
     RUST_BACKTRACE=1 cargo test -p redbx-mobile
 
-# Build Android .so libraries and generate Kotlin UniFFI bindings
+# Build Android .so libraries and generate the Kotlin UniFFI bindings
 # Requires: cargo-ndk, Android NDK (ANDROID_NDK_HOME or NDK_HOME)
 build_android: check_deps
     bash scripts/build_mobile.sh android
 
-# Build iOS XCFramework and generate Swift UniFFI bindings
-# Requires: xtool, swift (Linux cross-compilation)
-build_ios: check_deps
-    bash scripts/build_mobile.sh ios
+# Assemble the release AAR
+aar_android: build_android
+    cd android && ./gradlew :redbx:assembleRelease
 
-# Build both Android and iOS
-build_mobile: check_deps
-    bash scripts/build_mobile.sh all
+# Compile the instrumentation tests without running them (no device needed)
+check_android: build_android
+    cd android && ./gradlew :redbx:assembleDebugAndroidTest
+
+# Run the on-device tests — requires a connected device or a running emulator
+test_android: build_android
+    cd android && ./gradlew :redbx:connectedAndroidTest
